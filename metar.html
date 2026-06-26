@@ -1,0 +1,739 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Dashboard METAR - 12 Bulan</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        /* ----- RESET & VARIABLES ----- */
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --primary: #0b1d3a; --primary-light: #1a3a6b; --primary-lighter: #2d5aa0;
+            --bg: #f0f5fc; --card-bg: #ffffff; --border: rgba(60, 100, 180, 0.08);
+            --shadow: 0 4px 20px rgba(0, 20, 50, 0.06); --radius: 20px; --radius-sm: 12px;
+            --font: 'Inter', 'Segoe UI', system-ui, sans-serif; --transition: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        body { font-family: var(--font); background: var(--bg); color: var(--primary); padding: 20px; min-height: 100vh; }
+        .dashboard { max-width: 1600px; margin: 0 auto; }
+
+        /* ----- HEADER ----- */
+        .header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; background: var(--card-bg); padding: 18px 28px; border-radius: var(--radius); box-shadow: var(--shadow); border: 1px solid var(--border); margin-bottom: 24px; gap: 16px; }
+        .header-left { display: flex; align-items: center; gap: 16px; }
+        .header-icon { width: 48px; height: 48px; background: linear-gradient(135deg, #1abc9c, #27ae60); border-radius: 14px; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 24px; font-weight: 700; flex-shrink: 0; }
+        .header-title h1 { font-size: 24px; font-weight: 700; letter-spacing: -0.4px; color: var(--primary); }
+        .header-title span { font-size: 14px; font-weight: 500; color: #5679a9; display: block; margin-top: 2px; }
+        .header-right { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+        .header-badge { background: #eef4fc; padding: 6px 18px; border-radius: 40px; font-size: 13px; font-weight: 600; color: var(--primary-light); display: flex; align-items: center; gap: 8px; }
+        .header-badge .dot { width: 8px; height: 8px; background: #2ecc71; border-radius: 50%; display: inline-block; }
+        .header-badge.loading .dot { background: #f39c12; animation: blink 1s infinite; }
+        @keyframes blink { 50% { opacity: 0.3; } }
+        .header-date { font-size: 14px; color: #4a6a8a; background: #f5f8fc; padding: 6px 16px; border-radius: 40px; font-weight: 500; }
+
+        /* ----- FILTER BAR ----- */
+        .filter-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; background: var(--card-bg); padding: 12px 24px; border-radius: var(--radius-sm); box-shadow: var(--shadow); border: 1px solid var(--border); margin-bottom: 24px; }
+        .filter-group { display: flex; align-items: center; gap: 8px; }
+        .filter-group label { font-weight: 600; font-size: 14px; color: var(--primary); }
+        .filter-group select { padding: 8px 16px; border: 1px solid #dce6f2; border-radius: 10px; background: #f9fcff; font-weight: 500; font-size: 14px; color: var(--primary); cursor: pointer; transition: var(--transition); outline: none; }
+        .month-tabs { display: flex; gap: 4px; flex-wrap: wrap; margin-left: auto; }
+        .month-tab { padding: 6px 14px; border: none; background: transparent; border-radius: 8px; font-weight: 500; font-size: 12px; color: #4a6a8a; cursor: pointer; transition: var(--transition); }
+        .month-tab.active { background: #1abc9c; color: #fff; box-shadow: 0 4px 12px rgba(26, 188, 156, 0.25); }
+
+        /* ----- SUMMARY CARDS ----- */
+        .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 16px; margin-bottom: 24px; }
+        .summary-card { background: var(--card-bg); padding: 18px 20px; border-radius: var(--radius-sm); box-shadow: var(--shadow); border: 1px solid var(--border); transition: var(--transition); }
+        .summary-card .label { font-size: 12px; font-weight: 500; color: #6a8aaa; text-transform: uppercase; letter-spacing: 0.4px; }
+        .summary-card .value { font-size: 30px; font-weight: 700; color: var(--primary); margin-top: 2px; letter-spacing: -0.5px; }
+        .summary-card .sub { font-size: 13px; color: #5679a9; margin-top: 2px; }
+        .summary-card.accent-blue .value { color: #2980b9; }
+        .summary-card.accent-green .value { color: #27ae60; }
+        .summary-card.accent-purple .value { color: #8e44ad; }
+        .summary-card.accent-orange .value { color: #d35400; }
+        .summary-card.accent-red .value { color: #c0392b; }
+
+        /* ----- CARDS & GRID ----- */
+        .card { background: var(--card-bg); border-radius: var(--radius); padding: 20px 24px 24px; box-shadow: var(--shadow); border: 1px solid var(--border); margin-bottom: 24px; overflow: hidden; transition: var(--transition); }
+        .card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; flex-wrap: wrap; gap: 8px; }
+        .card-header h2 { font-size: 16px; font-weight: 600; color: var(--primary); display: flex; align-items: center; gap: 10px; }
+        .card-header .chip { font-size: 12px; font-weight: 500; color: #5679a9; background: #f0f6fe; padding: 4px 14px; border-radius: 40px; }
+        .chart-purpose { font-size: 12px; color: #6a8aaa; background: #f5f9ff; padding: 8px 14px; border-radius: 8px; margin-top: 12px; border-left: 3px solid #1abc9c; line-height: 1.5; }
+        
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+        .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 24px; }
+        .grid-2-1 { display: grid; grid-template-columns: 2fr 1fr; gap: 24px; }
+        
+        @media (max-width: 1200px) { .grid-3 { grid-template-columns: 1fr 1fr; } .grid-2-1 { grid-template-columns: 1fr; } }
+        @media (max-width: 992px) { .grid-2 { grid-template-columns: 1fr; } }
+        @media (max-width: 768px) {
+            .grid-3 { grid-template-columns: 1fr; } .header { flex-direction: column; align-items: flex-start; gap: 12px; }
+            .header-right { width: 100%; justify-content: flex-start; } .summary-grid { grid-template-columns: repeat(2, 1fr); }
+            .filter-bar { flex-direction: column; align-items: stretch; } .month-tabs { margin-left: 0; justify-content: center; }
+        }
+
+        .chart-container { position: relative; height: 220px; margin-top: 4px; }
+        .chart-container.tall { height: 260px; }
+
+        /* ----- RANKING TABLE ----- */
+        .rank-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        .rank-table thead th { background: #f5f9ff; color: var(--primary-light); font-weight: 600; font-size: 11px; text-transform: uppercase; padding: 10px 8px; text-align: center; border-bottom: 2px solid #dce6f2; }
+        .rank-table thead th:first-child { text-align: left; padding-left: 6px; }
+        .rank-table tbody td { padding: 9px 8px; text-align: center; border-bottom: 1px solid #eef2f7; color: #1f2e44; font-weight: 500; }
+        .rank-table tbody td:first-child { text-align: left; font-weight: 600; color: var(--primary); padding-left: 6px; }
+        .rank-badge { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 40px; font-weight: 700; font-size: 13px; background: #eef4fc; color: var(--primary-light); }
+        .rank-1 { background: #ffd700; color: #7a5a00; } .rank-2 { background: #d0d8e8; color: #3a4a6a; } .rank-3 { background: #e8c8a8; color: #6a4a2a; }
+        .pct-good { color: #27ae60; font-weight: 700; } .pct-warn { color: #e67e22; font-weight: 600; } .pct-bad { color: #c0392b; font-weight: 600; }
+
+        /* ----- FOOTER ----- */
+        .footer { text-align: center; font-size: 12px; color: #7a9abb; padding: 16px 0 4px; border-top: 1px solid #e9edf2; margin-top: 8px; }
+        
+        #loadingOverlay {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
+            background: rgba(255,255,255,0.8); z-index: 999; justify-content: center; align-items: center;
+            flex-direction: column; font-weight: 600; color: var(--primary);
+        }
+        .spinner { width: 40px; height: 40px; border: 4px solid var(--border); border-top: 4px solid #1abc9c; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 16px; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        /* UI MESSAGE BOX */
+        .msg-box { padding: 24px; border-radius: 12px; margin-bottom: 24px; background: #fff; box-shadow: var(--shadow); }
+        .msg-error { border-left: 4px solid #e74c3c; }
+    </style>
+</head>
+<body>
+
+    <div id="loadingOverlay">
+        <div class="spinner"></div>
+        <div id="loadingText">Menarik data dari Spreadsheet...</div>
+    </div>
+
+    <div class="dashboard">
+        <header class="header">
+            <div class="header-left">
+                <div class="header-icon">🌤️</div>
+                <div class="header-title">
+                    <h1>Dashboard METAR</h1>
+                    <span>Monitoring Sandi METAR · Live Sheet Data</span>
+                </div>
+            </div>
+            <div class="header-right">
+                <div class="header-badge loading" id="statusBadge">
+                    <span class="dot"></span>
+                    <span id="statusText">Sinkronisasi...</span>
+                </div>
+                <div class="header-date">
+                    📅 <span id="currentDate"></span>
+                </div>
+            </div>
+        </header>
+
+        <div class="filter-bar">
+            <div class="filter-group">
+                <label for="yearSelect">📆 Tahun</label>
+                <select id="yearSelect"></select>
+            </div>
+            <div class="filter-group">
+                <label for="monthSelect">📅 Bulan</label>
+                <select id="monthSelect"></select>
+            </div>
+            <div class="month-tabs" id="monthTabs"></div>
+        </div>
+
+        <div id="uiMessageArea"></div>
+        <div id="dashboardContent"></div>
+
+        <div class="footer">
+            <strong>Dashboard METAR AMP</strong> &middot; Data Live Google Sheets &middot; Diperbarui <span id="updateTime"></span>
+        </div>
+    </div>
+
+    <script>
+        // ============================================================
+        // KONFIGURASI GOOGLE SPREADSHEET 
+        // ============================================================
+        const PUBLISHED_ID = '2PACX-1vT4LcIB_-j2pfvt4BUNx4W6GKZiglF1UNo0-oR2yeKqjp7RY_004DF1GVmTxsuUiTx7oyBbrOsbx4Hp'; 
+        const GID = '1132195706'; // <--- GID KHUSUS SHEET db_metar
+        const SHEET_NAME = 'db_metar';
+
+        // ============================================================
+        // STRUKTUR DATA GLOBAL
+        // ============================================================
+        let personnel = [];
+        let availableYears = [];
+        let utcData = [];   
+        let statsData = []; 
+        let dailyStats = []; 
+        let currentYear = new Date().getFullYear().toString();
+
+        const monthNames = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+        
+        // Buat label UTC 24 jam (00 sampai 23)
+        const utcLabels = Array.from({length: 24}, (_, i) => i.toString().padStart(2, '0'));
+
+        // ============================================================
+        // CSV PARSER HELPER
+        // ============================================================
+        function csvToArray(strData) {
+            const objPattern = new RegExp(("(\\,|\\r?\\n|\\r|^)(?:\"([^\"]*(?:\"\"[^\"]*)*)\"|([^\\,\\r\\n]*))"), "gi");
+            let arrData = [[]];
+            let arrMatches = null;
+            while (arrMatches = objPattern.exec(strData)) {
+                let strMatchedDelimiter = arrMatches[1];
+                if (strMatchedDelimiter.length && strMatchedDelimiter !== ",") arrData.push([]);
+                let strMatchedValue;
+                if (arrMatches[2]) strMatchedValue = arrMatches[2].replace(new RegExp("\"\"", "g"), "\"");
+                else strMatchedValue = arrMatches[3];
+                arrData[arrData.length - 1].push(strMatchedValue);
+            }
+            return arrData;
+        }
+
+        // ============================================================
+        // FETCH & PARSE DATA
+        // ============================================================
+        async function fetchSheetData() {
+            document.getElementById('loadingOverlay').style.display = 'flex';
+            document.getElementById('uiMessageArea').innerHTML = ''; 
+            document.getElementById('dashboardContent').innerHTML = ''; 
+            
+            const targetUrl = `https://docs.google.com/spreadsheets/d/e/${PUBLISHED_ID}/pub?gid=${GID}&single=true&output=csv`;
+            
+            let csvText = null;
+            
+            try {
+                // Tarik Langsung
+                try {
+                    const directResponse = await fetch(targetUrl);
+                    if (directResponse.ok) {
+                        const text = await directResponse.text();
+                        if (!text.trim().startsWith('<html') && !text.trim().startsWith('<!DOCTYPE') && text.trim().length > 10) {
+                            csvText = text;
+                        }
+                    }
+                } catch (err) {
+                    console.warn("Direct fetch diblokir. Menggunakan Proxy...");
+                }
+
+                // Proxy AllOrigins
+                if (!csvText) {
+                    const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`;
+                    const proxyResponse = await fetch(proxyUrl);
+                    if (proxyResponse.ok) {
+                        const data = await proxyResponse.json();
+                        if (data && data.contents) {
+                            const text = data.contents;
+                            if (!text.trim().startsWith('<html') && !text.trim().startsWith('<!DOCTYPE') && text.trim().length > 10) {
+                                csvText = text;
+                            }
+                        }
+                    }
+                }
+
+                if (!csvText) throw new Error('Gagal menarik data dari file lokal. Pastikan terhubung internet.');
+
+                processCSVData(csvText);
+                
+                document.getElementById('statusBadge').classList.remove('loading');
+                document.getElementById('statusBadge').style.background = '#eef4fc';
+                document.getElementById('statusBadge').style.color = '#1a3a6b';
+                document.getElementById('statusBadge').querySelector('.dot').style.background = '#2ecc71';
+                document.getElementById('statusText').textContent = 'Live Connected';
+            } catch (error) {
+                console.error("Error:", error);
+                document.getElementById('statusBadge').classList.remove('loading');
+                document.getElementById('statusBadge').style.background = '#fdeaea';
+                document.getElementById('statusBadge').style.color = '#e74c3c';
+                document.getElementById('statusBadge').querySelector('.dot').style.background = '#e74c3c';
+                document.getElementById('statusText').textContent = 'Koneksi Gagal';
+
+                document.getElementById('uiMessageArea').innerHTML = `
+                    <div class="msg-box msg-error">
+                        <h3 style="color:#e74c3c; margin-bottom:10px;">❌ Gagal Mengambil Data</h3>
+                        <p><strong>Pesan:</strong> ${error.message}</p>
+                        <p style="margin-top:10px;">Coba gunakan Firefox atau Live Server jika Anda membuka ini dari file HTML lokal.</p>
+                    </div>
+                `;
+            } finally {
+                document.getElementById('loadingOverlay').style.display = 'none';
+            }
+        }
+
+        function processCSVData(csvText) {
+            const rawData = [];
+            const observersSet = new Set();
+            const yearsSet = new Set();
+
+            const rows = csvToArray(csvText.trim());
+            if (rows.length < 2) throw new Error('Data sheet kosong.');
+
+            for (let i = 1; i < rows.length; i++) {
+                const cells = rows[i];
+                if (cells.length < 7 || !cells[0] || !cells[1] || !cells[3]) continue; 
+
+                try {
+                    // PARSE TANGGAL SUPER KEBAL
+                    let dateStr = cells[0].replace(/["']/g, '').trim(); 
+                    let dateObj = new Date(dateStr);
+                    
+                    if (dateStr.includes('/')) {
+                        let parts = dateStr.split('/');
+                        if (parts.length === 3) {
+                            let p0 = parseInt(parts[0]);
+                            let p1 = parseInt(parts[1]);
+                            let p2 = parseInt(parts[2]);
+                            
+                            let y = p2 > 1000 ? p2 : (p0 > 1000 ? p0 : new Date().getFullYear());
+                            let m = p1;
+                            let d = p0;
+                            if (p0 > 1000) { d = p2; } 
+                            if (p1 > 12) { m = p0; d = p1; } 
+                            dateObj = new Date(y, m - 1, d);
+                        }
+                    }
+
+                    if (isNaN(dateObj.getTime())) continue; 
+
+                    const year = dateObj.getFullYear().toString();
+                    const month = dateObj.getMonth();
+                    const day = dateObj.getDate();
+                    yearsSet.add(year);
+
+                    // PARSE JAM UTC
+                    let utcStr = cells[1].replace(/["']/g, '').trim(); 
+                    let hour = 0;
+                    if (utcStr.includes(':')) hour = parseInt(utcStr.split(':')[0]);
+                    else if (!isNaN(parseInt(utcStr))) hour = parseInt(utcStr); 
+                    if (hour < 0 || hour > 23) hour = 0;
+
+                    // PARSE OBSERVER (Index 3 di db_metar)
+                    let observer = cells[3].replace(/["']/g, '').trim().toUpperCase();
+                    if (!observer) continue;
+                    observersSet.add(observer);
+
+                    // PARSE COMPLAIN (Index 4)
+                    let complainText = cells[4] ? cells[4].toUpperCase().trim() : '';
+                    let isComplain = complainText.includes('YES') || complainText.includes('YA') || complainText === '1' ? 1 : 0;
+                    
+                    // PARSE AKURASI (Index 5)
+                    let akurasiStr = cells[5] ? cells[5].replace(/[^0-9.]/g, '') : '0';
+                    let akurasi = parseFloat(akurasiStr);
+                    // Sesuaikan jika data sheet berupa 0.xx atau persentase utuh (100)
+                    if(akurasi > 1 && akurasi <= 100) akurasi = akurasi / 100;
+                    if(isNaN(akurasi)) akurasi = 0;
+
+                    // PARSE KETEPATAN WAKTU (Index 6)
+                    let ketepatanStr = cells[6] ? cells[6].replace(/[^0-9.]/g, '') : '0';
+                    let ketepatan = parseFloat(ketepatanStr);
+                    if(ketepatan > 1 && ketepatan <= 100) ketepatan = ketepatan / 100;
+                    if(isNaN(ketepatan)) ketepatan = 0;
+
+                    rawData.push({ year, month, day, hour, observer, isComplain, akurasi, ketepatan });
+
+                } catch (e) {
+                    console.warn("Parse error at row " + i, cells);
+                }
+            }
+
+            personnel = Array.from(observersSet).sort();
+            availableYears = Array.from(yearsSet).sort().reverse();
+            
+            if(availableYears.length === 0) availableYears = [new Date().getFullYear().toString()];
+            if(!availableYears.includes(currentYear)) currentYear = availableYears[0];
+
+            const yearSelect = document.getElementById('yearSelect');
+            yearSelect.innerHTML = '';
+            availableYears.forEach(y => {
+                const opt = document.createElement('option');
+                opt.value = y; opt.textContent = y;
+                if(y === currentYear) opt.selected = true;
+                yearSelect.appendChild(opt);
+            });
+
+            buildEmptyDataArrays();
+
+            rawData.forEach(d => {
+                if(d.year === currentYear) {
+                    const pIdx = personnel.indexOf(d.observer);
+                    utcData[d.month][pIdx][d.hour] += 1;
+                    
+                    statsData[d.month][pIdx].total += 1;
+                    statsData[d.month][pIdx].akurasiSum += d.akurasi;
+                    statsData[d.month][pIdx].ketepatanSum += d.ketepatan;
+                    statsData[d.month][pIdx].complainCount += d.isComplain;
+
+                    dailyStats[d.month][d.day].total += 1;
+                    dailyStats[d.month][d.day].akurasiSum += d.akurasi;
+                    dailyStats[d.month][d.day].ketepatanSum += d.ketepatan;
+                }
+            });
+
+            setupMonthTabs();
+            
+            let activeMonth = new Date().getMonth();
+            if (statsData[activeMonth] && statsData[activeMonth].every(p => p.total === 0)) {
+                for(let m = 11; m >= 0; m--) {
+                    if(!statsData[m].every(p => p.total === 0)) {
+                        activeMonth = m; break;
+                    }
+                }
+            }
+
+            document.getElementById('monthSelect').value = activeMonth;
+            updateDashboard(activeMonth);
+        }
+
+        function buildEmptyDataArrays() {
+            utcData = [];
+            statsData = [];
+            dailyStats = [];
+
+            for(let m = 0; m < 12; m++) {
+                let monthUtc = [];
+                let monthStats = [];
+                for(let p = 0; p < personnel.length; p++) {
+                    monthUtc.push(new Array(24).fill(0));
+                    monthStats.push({ total: 0, akurasiSum: 0, ketepatanSum: 0, complainCount: 0 });
+                }
+                utcData.push(monthUtc);
+                statsData.push(monthStats);
+
+                let days = [];
+                for(let d = 0; d <= 31; d++) {
+                    days.push({ total: 0, akurasiSum: 0, ketepatanSum: 0 });
+                }
+                dailyStats.push(days);
+            }
+        }
+
+        // ============================================================
+        // FUNGSI KALKULASI STATISTIK METAR
+        // ============================================================
+        function getTargetDeliveries(year, monthIdx) {
+            const daysInMonth = new Date(parseInt(year), monthIdx + 1, 0).getDate();
+            return daysInMonth * 48; // 48 kali sehari
+        }
+
+        function getTotals(monthIdx) {
+            const stats = statsData[monthIdx];
+            let total = 0, akurasiSum = 0, ketepatanSum = 0, complainCount = 0;
+            stats.forEach(s => {
+                total += s.total;
+                akurasiSum += s.akurasiSum;
+                ketepatanSum += s.ketepatanSum;
+                complainCount += s.complainCount;
+            });
+            return { total, akurasiSum, ketepatanSum, complainCount };
+        }
+
+        function getRanking(monthIdx) {
+            const stats = statsData[monthIdx];
+            return personnel.map((name, i) => {
+                const s = stats[i];
+                const acc = s.total > 0 ? (s.akurasiSum / s.total) * 100 : 0;
+                const tepat = s.total > 0 ? (s.ketepatanSum / s.total) * 100 : 0;
+                return { name, total: s.total, acc, tepat, complain: s.complainCount };
+            }).filter(d => d.total > 0).sort((a, b) => b.acc - a.acc || b.total - a.total);
+        }
+
+        function getMonthlyTrend() {
+            const months = []; const totals = []; const accuracies = []; const ketepatans = [];
+            for (let m = 0; m < 12; m++) {
+                months.push(monthNames[m].substring(0, 3));
+                const { total, akurasiSum, ketepatanSum } = getTotals(m);
+                totals.push(total);
+                accuracies.push(total > 0 ? (akurasiSum / total) * 100 : 0);
+                ketepatans.push(total > 0 ? (ketepatanSum / total) * 100 : 0);
+            }
+            return { months, totals, accuracies, ketepatans };
+        }
+
+        // ============================================================
+        // RENDER UI DASHBOARD
+        // ============================================================
+        function renderDashboard(monthIdx) {
+            if(personnel.length === 0) return ''; 
+
+            const month = monthNames[monthIdx];
+            const targetDel = getTargetDeliveries(currentYear, monthIdx); 
+            const overall = getTotals(monthIdx);
+            
+            const activeCount = statsData[monthIdx].filter(s => s.total > 0).length;
+            const avgAcc = overall.total > 0 ? (overall.akurasiSum / overall.total) * 100 : 0;
+            const avgTepat = overall.total > 0 ? (overall.ketepatanSum / overall.total) * 100 : 0;
+            const ranking = getRanking(monthIdx);
+
+            let html = '';
+            
+            html += `
+                <div class="summary-grid">
+                    <div class="summary-card accent-blue">
+                        <div class="label">📦 Total Pengiriman</div>
+                        <div class="value">${overall.total} <span style="font-size: 20px; color: #7a9abb; font-weight: 500;">/ ${targetDel}</span></div>
+                        <div class="sub">Realisasi vs Target (${month})</div>
+                    </div>
+                    <div class="summary-card accent-green">
+                        <div class="label">🎯 Rata-Rata Akurasi</div>
+                        <div class="value">${avgAcc.toFixed(2)}%</div>
+                        <div class="sub">${activeCount} personil aktif</div>
+                    </div>
+                    <div class="summary-card accent-purple">
+                        <div class="label">⏱️ Ketepatan Waktu</div>
+                        <div class="value">${avgTepat.toFixed(2)}%</div>
+                        <div class="sub">Kecepatan transmisi</div>
+                    </div>
+                    <div class="summary-card accent-red">
+                        <div class="label">⚠️ Total Complain</div>
+                        <div class="value">${overall.complainCount}</div>
+                        <div class="sub">Laporan di bulan ini</div>
+                    </div>
+                    <div class="summary-card accent-orange">
+                        <div class="label">🏆 Peringkat Teratas</div>
+                        <div class="value" style="font-size:22px; line-height:1.2; margin-top:6px;">${ranking.length > 0 ? ranking[0].name : '-'}</div>
+                    </div>
+                </div>
+            `;
+
+            html += `
+                <div class="card" style="margin-bottom: 24px;">
+                    <div class="card-header">
+                        <h2>📆 Tren METAR Harian</h2>
+                        <span class="chip">${month} ${currentYear}</span>
+                    </div>
+                    <div class="chart-container tall">
+                        <canvas id="dailyTrendChart"></canvas>
+                    </div>
+                </div>
+            `;
+
+            html += `<div class="grid-2">
+                <div class="card">
+                    <div class="card-header">
+                        <h2>📈 Tren 12 Bulan (${currentYear})</h2><span class="chip">Akurasi & Waktu</span>
+                    </div>
+                    <div class="chart-container tall"><canvas id="trendChart"></canvas></div>
+                </div>
+                <div class="card">
+                    <div class="card-header"><h2>🕸️ Radar Performa (Top 5)</h2><span class="chip">${month}</span></div>
+                    <div class="chart-container tall"><canvas id="radarChart"></canvas></div>
+                </div>
+            </div>`;
+
+            html += `<div class="grid-3">
+                <div class="card">
+                    <div class="card-header"><h2>🍩 Kontribusi Personil</h2><span class="chip">${month}</span></div>
+                    <div class="chart-container"><canvas id="polarChart"></canvas></div>
+                </div>
+                <div class="card">
+                    <div class="card-header"><h2>📊 Beban Jam UTC (Top 5)</h2><span class="chip">${month}</span></div>
+                    <div class="chart-container"><canvas id="stackedChart"></canvas></div>
+                </div>
+                <div class="card">
+                    <div class="card-header"><h2>📉 Rasio Complain</h2><span class="chip">${month}</span></div>
+                    <div class="chart-container"><canvas id="doughnutChart"></canvas></div>
+                </div>
+            </div>`;
+
+            const top8 = ranking.slice(0, 8);
+            html += `<div class="grid-2-1">
+                <div class="card">
+                    <div class="card-header"><h2>🔥 Heatmap Akurasi (Top 8)</h2><span class="chip">${month}</span></div>
+                    <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:12px;">`;
+            
+            if(top8.length === 0) html += `<p style="grid-column: span 4; text-align:center; color:#999;">Belum ada data di bulan ini.</p>`;
+            
+            top8.forEach((d) => {
+                const pct = Math.round(d.acc);
+                const color = pct >= 100 ? '#27ae60' : (pct >= 90 ? '#f39c12' : '#c0392b');
+                const barWidth = Math.min(pct, 100);
+                html += `
+                    <div style="background:#f5f9ff; padding:12px; border-radius:12px; text-align:center;">
+                        <div style="font-weight:600; font-size:11px; color:var(--primary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${d.name}">${d.name}</div>
+                        <div style="margin:8px 0; background:#e9edf2; border-radius:20px; height:12px; overflow:hidden;">
+                            <div style="width:${barWidth}%; height:100%; background:${color}; border-radius:20px; transition: width 0.6s ease;"></div>
+                        </div>
+                        <div style="font-size:18px; font-weight:700; color:${color};">${pct}%</div>
+                        <div style="font-size:11px; color:#7a9abb;">${d.total} kiriman</div>
+                    </div>`;
+            });
+            html += `</div></div>
+                <div class="card">
+                    <div class="card-header"><h2>🏆 Peringkat Keseluruhan</h2><span class="chip">${month}</span></div>
+                    <div style="max-height:280px; overflow-y:auto;">
+                        <table class="rank-table">
+                            <thead><tr><th>Rank</th><th>Pengamat</th><th>Total</th><th>Akurasi</th><th>Ketepatan</th></tr></thead>
+                            <tbody>`;
+            ranking.forEach((d, idx) => {
+                const rank = idx + 1;
+                let rClass = rank === 1 ? 'rank-1' : (rank === 2 ? 'rank-2' : (rank === 3 ? 'rank-3' : ''));
+                const pClass = d.acc >= 100 ? 'pct-good' : (d.acc >= 90 ? 'pct-warn' : 'pct-bad');
+                const tClass = d.tepat >= 100 ? 'pct-good' : (d.tepat >= 90 ? 'pct-warn' : 'pct-bad');
+                html += `<tr><td><span class="rank-badge ${rClass}">${rank}</span></td><td>${d.name}</td><td>${d.total}</td><td class="${pClass}">${d.acc.toFixed(1)}%</td><td class="${tClass}">${d.tepat.toFixed(1)}%</td></tr>`;
+            });
+            if(ranking.length === 0) html += `<tr><td colspan="5">Tidak ada data</td></tr>`;
+            html += `</tbody></table></div></div></div>`;
+
+            return html;
+        }
+
+        // ============================================================
+        // RENDER CHARTS
+        // ============================================================
+        let chartInstances = {};
+        function renderAllCharts(monthIdx) {
+            if(personnel.length === 0) return;
+            Object.values(chartInstances).forEach(ch => { if (ch) ch.destroy(); });
+            chartInstances = {};
+
+            const ranking = getRanking(monthIdx);
+            const trend = getMonthlyTrend();
+            const utc = utcData[monthIdx];
+            const top5 = ranking.slice(0, 5);
+
+            // 0. CHART HARIAN
+            const daysInMonth = new Date(parseInt(currentYear), monthIdx + 1, 0).getDate();
+            const dailyLabels = [], dailyAccData = [], dailyTepatData = [], dailyTotalData = [];
+
+            for (let d = 1; d <= daysInMonth; d++) {
+                dailyLabels.push(d); 
+                const stats = dailyStats[monthIdx][d];
+                dailyTotalData.push(stats.total);
+                dailyAccData.push(stats.total > 0 ? (stats.akurasiSum / stats.total * 100) : null);
+                dailyTepatData.push(stats.total > 0 ? (stats.ketepatanSum / stats.total * 100) : null);
+            }
+
+            if(document.getElementById('dailyTrendChart')) {
+                chartInstances.dailyTrend = new Chart(document.getElementById('dailyTrendChart'), {
+                    type: 'line',
+                    data: {
+                        labels: dailyLabels,
+                        datasets: [
+                            {
+                                label: 'Akurasi (%)', data: dailyAccData, borderColor: '#27ae60', backgroundColor: 'rgba(39, 174, 96,0.1)',
+                                tension: 0.3, borderWidth: 3, pointRadius: 4, yAxisID: 'y', spanGaps: true
+                            },
+                            {
+                                label: 'Ketepatan Waktu (%)', data: dailyTepatData, borderColor: '#2980b9', backgroundColor: 'rgba(41, 128, 185,0.1)',
+                                tension: 0.3, borderWidth: 3, pointRadius: 4, yAxisID: 'y', spanGaps: true, borderDash: [5,5]
+                            },
+                            {
+                                type: 'bar', label: 'Total Kiriman', data: dailyTotalData, backgroundColor: 'rgba(26,58,107,0.15)', borderRadius: 4, yAxisID: 'y1'
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        scales: {
+                            y: { beginAtZero: true, max: 100 },
+                            y1: { beginAtZero: true, position: 'right', grid: {display: false} }
+                        },
+                        plugins: { tooltip: { mode: 'index', intersect: false } }
+                    }
+                });
+            }
+
+            // 1. TREND OVERALL (12 Bulan)
+            if(document.getElementById('trendChart')) {
+                chartInstances.trend = new Chart(document.getElementById('trendChart'), {
+                    type: 'line', data: { labels: trend.months,
+                        datasets: [
+                            { label: 'Akurasi (%)', data: trend.accuracies, borderColor: '#27ae60', tension: 0.3 },
+                            { label: 'Ketepatan (%)', data: trend.ketepatans, borderColor: '#2980b9', borderDash: [5,5], tension: 0.3 }
+                        ]
+                    },
+                    options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true, max: 100 } } }
+                });
+            }
+            
+            // 2. RADAR
+            if(document.getElementById('radarChart') && top5.length > 0) {
+                const radarData = top5.map(d => {
+                    // Penyesuaian agar max total sekitar 800 terlihat bagus di radar skala 0-100
+                    return [d.total / 8, d.acc, d.tepat, d.complain === 0 ? 100 : Math.max(0, 100 - (d.complain * 10))];
+                });
+                chartInstances.radar = new Chart(document.getElementById('radarChart'), {
+                    type: 'radar', data: { labels: ['Kirim/8', 'Akurasi', 'Tepat Waktu', 'Bebas Complain'],
+                        datasets: top5.map((d, i) => ({ label: d.name, data: radarData[i], borderColor: `hsl(${i * 60 + 200}, 70%, 50%)`, backgroundColor: `hsla(${i * 60 + 200}, 70%, 50%, 0.15)` }))
+                    }, options: { responsive: true, maintainAspectRatio: false, scales: { r: { beginAtZero: true, max: 100 } } }
+                });
+            }
+
+            // 3. POLAR
+            if(document.getElementById('polarChart')) {
+                const activeData = ranking.map(d => ({ name: d.name, total: d.total }));
+                chartInstances.polar = new Chart(document.getElementById('polarChart'), {
+                    type: 'polarArea', data: { labels: activeData.map(d => d.name), datasets: [{ data: activeData.map(d => d.total), backgroundColor: activeData.map((_, i) => `hsl(${i * 30 + 150}, 70%, 55%)`) }] },
+                    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: {boxWidth: 10, font: {size: 9}} } } }
+                });
+            }
+
+            // 4. STACKED BAR (24 JAM UTC)
+            if(document.getElementById('stackedChart') && top5.length > 0) {
+                const top5Utc = top5.map(d => personnel.indexOf(d.name));
+                chartInstances.stacked = new Chart(document.getElementById('stackedChart'), {
+                    type: 'bar', data: { labels: utcLabels, datasets: top5Utc.map((idx, i) => ({ label: personnel[idx], data: utc[idx], backgroundColor: `hsl(${i * 60 + 200}, 70%, 55%)` })) },
+                    options: { responsive: true, maintainAspectRatio: false, scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true } } }
+                });
+            }
+
+            // 5. DOUGHNUT (Rasio Complain)
+            if(document.getElementById('doughnutChart')) {
+                const totalStats = getTotals(monthIdx);
+                const noComplain = Math.max(0, totalStats.total - totalStats.complainCount);
+                chartInstances.doughnut = new Chart(document.getElementById('doughnutChart'), {
+                    type: 'doughnut', data: { labels: ['Aman (NO Complain)', 'Complain (YES)'], datasets: [{ data: [noComplain, totalStats.complainCount], backgroundColor: ['#27ae60', '#c0392b'] }] },
+                    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
+                });
+            }
+        }
+
+        // ============================================================
+        // EVENT LISTENER & INIT
+        // ============================================================
+        function setupMonthTabs() {
+            const tabsContainer = document.getElementById('monthTabs');
+            tabsContainer.innerHTML = '';
+            const selMonth = parseInt(document.getElementById('monthSelect').value);
+            monthNames.forEach((name, idx) => {
+                const btn = document.createElement('button');
+                btn.className = 'month-tab' + (idx === selMonth ? ' active' : '');
+                btn.textContent = name.substring(0, 3);
+                btn.addEventListener('click', function() {
+                    document.querySelectorAll('.month-tab').forEach(t => t.classList.remove('active'));
+                    this.classList.add('active');
+                    document.getElementById('monthSelect').value = idx;
+                    updateDashboard(idx);
+                });
+                tabsContainer.appendChild(btn);
+            });
+        }
+
+        function updateDashboard(monthIdx) {
+            document.getElementById('dashboardContent').innerHTML = renderDashboard(monthIdx);
+            setTimeout(() => { renderAllCharts(monthIdx); }, 80);
+        }
+
+        function init() {
+            const now = new Date();
+            const dateStr = `${now.getDate()} ${monthNames[now.getMonth()]} ${now.getFullYear()}`;
+            document.getElementById('currentDate').textContent = dateStr;
+            document.getElementById('updateTime').textContent = `${dateStr}, ${now.toLocaleTimeString('id-ID', {hour:'2-digit', minute:'2-digit'})} WIB`;
+
+            document.getElementById('monthSelect').innerHTML = monthNames.map((m, i) => `<option value="${i}">${m}</option>`).join('');
+            document.getElementById('monthSelect').value = now.getMonth();
+
+            document.getElementById('yearSelect').addEventListener('change', function() {
+                currentYear = this.value;
+                fetchSheetData(); 
+            });
+            document.getElementById('monthSelect').addEventListener('change', function() {
+                const idx = parseInt(this.value);
+                document.querySelectorAll('.month-tab').forEach((tab, i) => tab.classList.toggle('active', i === idx));
+                updateDashboard(idx);
+            });
+
+            fetchSheetData();
+        }
+
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>

@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Dashboard Aerodrome Warning</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        /* ----- RESET & VARIABLES ----- */
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --primary: #2c3e50; --primary-light: #e74c3c; --primary-lighter: #e67e22;
+            --bg: #f9f9f9; --card-bg: #ffffff; --border: rgba(231, 76, 60, 0.15);
+            --shadow: 0 4px 20px rgba(0, 0, 0, 0.05); --radius: 20px; --radius-sm: 12px;
+            --font: 'Inter', 'Segoe UI', system-ui, sans-serif; --transition: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        body { font-family: var(--font); background: var(--bg); color: var(--primary); padding: 20px; min-height: 100vh; }
+        .dashboard { max-width: 1600px; margin: 0 auto; }
+
+        /* ----- HEADER ----- */
+        .header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; background: var(--card-bg); padding: 18px 28px; border-radius: var(--radius); box-shadow: var(--shadow); border: 1px solid var(--border); margin-bottom: 24px; gap: 16px; border-top: 4px solid var(--primary-light); }
+        .header-left { display: flex; align-items: center; gap: 16px; }
+        .header-icon { width: 48px; height: 48px; background: linear-gradient(135deg, #e74c3c, #e67e22); border-radius: 14px; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 24px; font-weight: 700; flex-shrink: 0; }
+        .header-title h1 { font-size: 24px; font-weight: 700; letter-spacing: -0.4px; color: var(--primary); }
+        .header-title span { font-size: 14px; font-weight: 500; color: #7f8c8d; display: block; margin-top: 2px; }
+        .header-right { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+        .header-badge { background: #fdedec; padding: 6px 18px; border-radius: 40px; font-size: 13px; font-weight: 600; color: #c0392b; display: flex; align-items: center; gap: 8px; }
+        .header-badge .dot { width: 8px; height: 8px; background: #e74c3c; border-radius: 50%; display: inline-block; }
+        .header-badge.loading .dot { background: #f39c12; animation: blink 1s infinite; }
+        @keyframes blink { 50% { opacity: 0.3; } }
+        .header-date { font-size: 14px; color: #7f8c8d; background: #f4f6f7; padding: 6px 16px; border-radius: 40px; font-weight: 500; }
+
+        /* ----- FILTER BAR ----- */
+        .filter-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; background: var(--card-bg); padding: 12px 24px; border-radius: var(--radius-sm); box-shadow: var(--shadow); border: 1px solid var(--border); margin-bottom: 24px; }
+        .filter-group { display: flex; align-items: center; gap: 8px; }
+        .filter-group label { font-weight: 600; font-size: 14px; color: var(--primary); }
+        .filter-group select { padding: 8px 16px; border: 1px solid #bdc3c7; border-radius: 10px; background: #fff; font-weight: 500; font-size: 14px; color: var(--primary); cursor: pointer; transition: var(--transition); outline: none; }
+        .month-tabs { display: flex; gap: 4px; flex-wrap: wrap; margin-left: auto; }
+        .month-tab { padding: 6px 14px; border: none; background: transparent; border-radius: 8px; font-weight: 500; font-size: 12px; color: #7f8c8d; cursor: pointer; transition: var(--transition); }
+        .month-tab.active { background: var(--primary-light); color: #fff; box-shadow: 0 4px 12px rgba(231, 76, 60, 0.25); }
+
+        /* ----- SUMMARY CARDS ----- */
+        .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 16px; margin-bottom: 24px; }
+        .summary-card { background: var(--card-bg); padding: 18px 20px; border-radius: var(--radius-sm); box-shadow: var(--shadow); border: 1px solid rgba(0,0,0,0.04); transition: var(--transition); }
+        .summary-card .label { font-size: 12px; font-weight: 500; color: #7f8c8d; text-transform: uppercase; letter-spacing: 0.4px; }
+        .summary-card .value { font-size: 30px; font-weight: 700; color: var(--primary); margin-top: 2px; letter-spacing: -0.5px; }
+        .summary-card .sub { font-size: 13px; color: #95a5a6; margin-top: 2px; }
+        .summary-card.accent-red .value { color: #e74c3c; }
+        .summary-card.accent-orange .value { color: #e67e22; }
+        .summary-card.accent-blue .value { color: #2980b9; }
+        .summary-card.accent-purple .value { color: #8e44ad; }
+        .summary-card.accent-green .value { color: #27ae60; }
+
+        /* ----- CARDS & GRID ----- */
+        .card { background: var(--card-bg); border-radius: var(--radius); padding: 20px 24px 24px; box-shadow: var(--shadow); border: 1px solid rgba(0,0,0,0.04); margin-bottom: 24px; overflow: hidden; transition: var(--transition); }
+        .card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; flex-wrap: wrap; gap: 8px; }
+        .card-header h2 { font-size: 16px; font-weight: 600; color: var(--primary); display: flex; align-items: center; gap: 10px; }
+        .card-header .chip { font-size: 12px; font-weight: 500; color: #c0392b; background: #fdedec; padding: 4px 14px; border-radius: 40px; }
+        
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+        .grid-2-1 { display: grid; grid-template-columns: 2fr 1fr; gap: 24px; }
+        
+        @media (max-width: 992px) { .grid-2, .grid-2-1 { grid-template-columns: 1fr; } }
+        @media (max-width: 768px) {
+            .header { flex-direction: column; align-items: flex-start; gap: 12px; }
+            .header-right { width: 100%; justify-content: flex-start; } .summary-grid { grid-template-columns: repeat(2, 1fr); }
+            .filter-bar { flex-direction: column; align-items: stretch; } .month-tabs { margin-left: 0; justify-content: center; }
+        }
+
+        .chart-container { position: relative; height: 220px; margin-top: 4px; }
+        .chart-container.tall { height: 260px; }
+
+        /* ----- RANKING TABLE ----- */
+        .rank-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        .rank-table thead th { background: #fdf2e9; color: #e74c3c; font-weight: 600; font-size: 11px; text-transform: uppercase; padding: 10px 8px; text-align: center; border-bottom: 2px solid #fadbd8; }
+        .rank-table thead th:first-child { text-align: left; padding-left: 6px; }
+        .rank-table tbody td { padding: 9px 8px; text-align: center; border-bottom: 1px solid #f2f4f4; color: #2c3e50; font-weight: 500; }
+        .rank-table tbody td:first-child { text-align: left; font-weight: 600; color: var(--primary); padding-left: 6px; }
+        .rank-badge { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 40px; font-weight: 700; font-size: 13px; background: #f4f6f7; color: #7f8c8d; }
+        .rank-1 { background: #e74c3c; color: #fff; } .rank-2 { background: #e67e22; color: #fff; } .rank-3 { background: #f1c40f; color: #fff; }
+        .pct-good { color: #27ae60; font-weight: 700; } .pct-warn { color: #e67e22; font-weight: 600; } .pct-bad { color: #c0392b; font-weight: 600; }
+
+        /* ----- FOOTER ----- */
+        .footer { text-align: center; font-size: 12px; color: #95a5a6; padding: 16px 0 4px; border-top: 1px solid #ecf0f1; margin-top: 8px; }
+        
+        #loadingOverlay {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
+            background: rgba(255,255,255,0.8); z-index: 999; justify-content: center; align-items: center;
+            flex-direction: column; font-weight: 600; color: var(--primary);
+        }
+        .spinner { width: 40px; height: 40px; border: 4px solid rgba(231,76,60,0.2); border-top: 4px solid #e74c3c; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 16px; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        /* UI MESSAGE BOX */
+        .msg-box { padding: 24px; border-radius: 12px; margin-bottom: 24px; background: #fff; box-shadow: var(--shadow); }
+        .msg-error { border-left: 4px solid #e74c3c; }
+    </style>
+</head>
+<body>
+
+    <div id="loadingOverlay">
+        <div class="spinner"></div>
+        <div id="loadingText">Menarik data AD Warning...</div>
+    </div>
+
+    <div class="dashboard">
+        <!-- ===== HEADER ===== -->
+        <header class="header">
+            <div class="header-left">
+                <div class="header-icon">⚠️</div>
+                <div class="header-title">
+                    <h1>Dashboard Aerodrome Warning</h1>
+                    <span>Monitoring Peringatan Dini Cuaca Bandara · Live Data</span>
+                </div>
+            </div>
+            <div class="header-right">
+                <div class="header-badge loading" id="statusBadge">
+                    <span class="dot"></span>
+                    <span id="statusText">Sinkronisasi...</span>
+                </div>
+                <div class="header-date">
+                    📅 <span id="currentDate"></span>
+                </div>
+            </div>
+        </header>
+
+        <!-- ===== FILTER ===== -->
+        <div class="filter-bar">
+            <div class="filter-group">
+                <label for="yearSelect">📆 Tahun</label>
+                <select id="yearSelect"></select>
+            </div>
+            <div class="filter-group">
+                <label for="monthSelect">📅 Bulan</label>
+                <select id="monthSelect"></select>
+            </div>
+            <div class="month-tabs" id="monthTabs"></div>
+        </div>
+
+        <div id="uiMessageArea"></div>
+        <div id="dashboardContent"></div>
+
+        <!-- ===== FOOTER ===== -->
+        <div class="footer">
+            <strong>Dashboard AD Warning AMP</strong> &middot; Data Live Google Sheets &middot; Diperbarui <span id="updateTime"></span>
+        </div>
+    </div>
+
+    <script>
+        // ============================================================
+        // KONFIGURASI GOOGLE SPREADSHEET
+        // ============================================================
+        const PUBLISHED_ID = '2PACX-1vT4LcIB_-j2pfvt4BUNx4W6GKZiglF1UNo0-oR2yeKqjp7RY_004DF1GVmTxsuUiTx7oyBbrOsbx4Hp'; 
+        const GID = '1461511385'; // <--- GID KHUSUS SHEET db_adwarning
+        const SHEET_NAME = 'db_adwarning'; 
+
+        // ============================================================
+        // STRUKTUR DATA GLOBAL
+        // ============================================================
+        let personnel = [];
+        let availableYears = [];
+        let statsData = []; // [month][person] = { warnings: 0, accuracySum: 0, validWarningDays: 0, greatCount: 0 }
+        let dailyStats = []; // [month][day] = { warnings: 0, accuracySum: 0, validWarningDays: 0 }
+        let currentYear = new Date().getFullYear().toString();
+
+        const monthNames = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+
+        // ============================================================
+        // CSV PARSER HELPER
+        // ============================================================
+        function csvToArray(strData) {
+            const objPattern = new RegExp(("(\\,|\\r?\\n|\\r|^)(?:\"([^\"]*(?:\"\"[^\"]*)*)\"|([^\\,\\r\\n]*))"), "gi");
+            let arrData = [[]];
+            let arrMatches = null;
+            while (arrMatches = objPattern.exec(strData)) {
+                let strMatchedDelimiter = arrMatches[1];
+                if (strMatchedDelimiter.length && strMatchedDelimiter !== ",") arrData.push([]);
+                let strMatchedValue;
+                if (arrMatches[2]) strMatchedValue = arrMatches[2].replace(new RegExp("\"\"", "g"), "\"");
+                else strMatchedValue = arrMatches[3];
+                arrData[arrData.length - 1].push(strMatchedValue);
+            }
+            return arrData;
+        }
+
+        // ============================================================
+        // FETCH & PARSE DATA
+        // ============================================================
+        async function fetchSheetData() {
+            document.getElementById('loadingOverlay').style.display = 'flex';
+            document.getElementById('uiMessageArea').innerHTML = ''; 
+            document.getElementById('dashboardContent').innerHTML = ''; 
+            
+            const targetUrl = `https://docs.google.com/spreadsheets/d/e/${PUBLISHED_ID}/pub?gid=${GID}&single=true&output=csv`;
+            let csvText = null;
+            
+            try {
+                try {
+                    const directResponse = await fetch(targetUrl);
+                    if (directResponse.ok) {
+                        const text = await directResponse.text();
+                        if (!text.trim().startsWith('<html') && !text.trim().startsWith('<!DOCTYPE') && text.trim().length > 10) {
+                            csvText = text;
+                        }
+                    }
+                } catch (err) {
+                    console.warn("Direct fetch diblokir. Menggunakan Proxy...");
+                }
+
+                if (!csvText) {
+                    const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`;
+                    const proxyResponse = await fetch(proxyUrl);
+                    if (proxyResponse.ok) {
+                        const data = await proxyResponse.json();
+                        if (data && data.contents) {
+                            const text = data.contents;
+                            if (!text.trim().startsWith('<html') && !text.trim().startsWith('<!DOCTYPE') && text.trim().length > 10) {
+                                csvText = text;
+                            }
+                        }
+                    }
+                }
+
+                if (!csvText) throw new Error('Gagal menarik data. Periksa pengaturan Publish to Web untuk sheet db_adwarning.');
+
+                processCSVData(csvText);
+                
+                document.getElementById('statusBadge').classList.remove('loading');
+                document.getElementById('statusBadge').style.background = '#fdedec';
+                document.getElementById('statusBadge').style.color = '#c0392b';
+                document.getElementById('statusBadge').querySelector('.dot').style.background = '#e74c3c';
+                document.getElementById('statusText').textContent = 'Live Connected';
+            } catch (error) {
+                console.error("Error:", error);
+                document.getElementById('statusBadge').classList.remove('loading');
+                document.getElementById('statusBadge').style.background = '#fdeaea';
+                document.getElementById('statusBadge').style.color = '#e74c3c';
+                document.getElementById('statusBadge').querySelector('.dot').style.background = '#e74c3c';
+                document.getElementById('statusText').textContent = 'Koneksi Gagal';
+
+                document.getElementById('uiMessageArea').innerHTML = `
+                    <div class="msg-box msg-error">
+                        <h3 style="color:#e74c3c; margin-bottom:10px;">❌ Gagal Mengambil Data</h3>
+                        <p><strong>Pesan:</strong> ${error.message}</p>
+                    </div>
+                `;
+            } finally {
+                document.getElementById('loadingOverlay').style.display = 'none';
+            }
+        }
+
+        function processCSVData(csvText) {
+            const rawData = [];
+            const observersSet = new Set();
+            const yearsSet = new Set();
+
+            const rows = csvToArray(csvText.trim());
+            if (rows.length < 2) throw new Error('Data sheet kosong.');
+
+            // Asumsi Kolom db_adwarning: 0:TIMESTAMP, 1:NAMA, 2:AKURASI, 3:MUTU, 4:JUMLAH AD WRNG
+            for (let i = 1; i < rows.length; i++) {
+                const cells = rows[i];
+                if (cells.length < 5 || !cells[0] || !cells[1]) continue; 
+
+                try {
+                    // PARSE TANGGAL
+                    let dateStr = cells[0].replace(/["']/g, '').trim(); 
+                    let dateObj = new Date(dateStr);
+                    
+                    if (dateStr.includes('/')) {
+                        let parts = dateStr.split('/');
+                        if (parts.length === 3) {
+                            let p0 = parseInt(parts[0]);
+                            let p1 = parseInt(parts[1]);
+                            let p2 = parseInt(parts[2]);
+                            
+                            let y = p2 > 1000 ? p2 : (p0 > 1000 ? p0 : new Date().getFullYear());
+                            let m = p1;
+                            let d = p0;
+                            if (p0 > 1000) { d = p2; } 
+                            if (p1 > 12) { m = p0; d = p1; } 
+                            dateObj = new Date(y, m - 1, d);
+                        }
+                    }
+
+                    if (isNaN(dateObj.getTime())) continue; 
+
+                    const year = dateObj.getFullYear().toString();
+                    const month = dateObj.getMonth();
+                    const day = dateObj.getDate();
+                    yearsSet.add(year);
+
+                    // PARSE FORECASTER (Kolom 1)
+                    let observer = cells[1].replace(/["']/g, '').trim().toUpperCase();
+                    if (!observer) continue;
+                    observersSet.add(observer);
+
+                    // PARSE JUMLAH AD WARNING (Kolom 4) - Deteksi "Nihil"
+                    let warningStr = cells[4] ? cells[4].toUpperCase().trim() : '';
+                    let warnings = 0;
+                    if (!warningStr.includes('NIHIL') && warningStr !== '') {
+                        warnings = parseInt(warningStr.replace(/[^0-9]/g, '')) || 0;
+                    }
+
+                    // PARSE AKURASI (Kolom 2) - Hanya jika ada peringatan
+                    let accStr = cells[2] ? cells[2].toUpperCase().trim() : '';
+                    let akurasi = 0;
+                    if (warnings > 0 && !accStr.includes('NIHIL') && accStr !== '') {
+                        akurasi = parseFloat(accStr.replace(/[^0-9.]/g, '')) || 0;
+                    }
+
+                    // PARSE MUTU (Kolom 3)
+                    let mutuStr = cells[3] ? cells[3].toUpperCase().trim() : '';
+                    let isGreat = (warnings > 0 && mutuStr.includes('GREAT')) ? 1 : 0;
+
+                    rawData.push({ year, month, day, observer, warnings, akurasi, isGreat });
+
+                } catch (e) {
+                    console.warn("Parse error at row " + i, cells);
+                }
+            }
+
+            personnel = Array.from(observersSet).sort();
+            availableYears = Array.from(yearsSet).sort().reverse();
+            
+            if(availableYears.length === 0) availableYears = [new Date().getFullYear().toString()];
+            if(!availableYears.includes(currentYear)) currentYear = availableYears[0];
+
+            const yearSelect = document.getElementById('yearSelect');
+            yearSelect.innerHTML = '';
+            availableYears.forEach(y => {
+                const opt = document.createElement('option');
+                opt.value = y; opt.textContent = y;
+                if(y === currentYear) opt.selected = true;
+                yearSelect.appendChild(opt);
+            });
+
+            buildEmptyDataArrays();
+
+            rawData.forEach(d => {
+                if(d.year === currentYear) {
+                    const pIdx = personnel.indexOf(d.observer);
+                    
+                    if (d.warnings > 0) {
+                        statsData[d.month][pIdx].warnings += d.warnings;
+                        statsData[d.month][pIdx].accuracySum += d.akurasi;
+                        statsData[d.month][pIdx].validWarningDays += 1;
+                        statsData[d.month][pIdx].greatCount += d.isGreat;
+
+                        dailyStats[d.month][d.day].warnings += d.warnings;
+                        dailyStats[d.month][d.day].accuracySum += d.akurasi;
+                        dailyStats[d.month][d.day].validWarningDays += 1;
+                    }
+                }
+            });
+
+            setupMonthTabs();
+            
+            let activeMonth = new Date().getMonth();
+            if (statsData[activeMonth] && statsData[activeMonth].every(p => p.warnings === 0)) {
+                for(let m = 11; m >= 0; m--) {
+                    if(!statsData[m].every(p => p.warnings === 0)) {
+                        activeMonth = m; break;
+                    }
+                }
+            }
+
+            document.getElementById('monthSelect').value = activeMonth;
+            updateDashboard(activeMonth);
+        }
+
+        function buildEmptyDataArrays() {
+            statsData = [];
+            dailyStats = [];
+
+            for(let m = 0; m < 12; m++) {
+                let monthStats = [];
+                for(let p = 0; p < personnel.length; p++) {
+                    monthStats.push({ warnings: 0, accuracySum: 0, validWarningDays: 0, greatCount: 0 });
+                }
+                statsData.push(monthStats);
+
+                let days = [];
+                for(let d = 0; d <= 31; d++) {
+                    days.push({ warnings: 0, accuracySum: 0, validWarningDays: 0 });
+                }
+                dailyStats.push(days);
+            }
+        }
+
+        // ============================================================
+        // FUNGSI KALKULASI STATISTIK AD WARNING
+        // ============================================================
+        function getTotals(monthIdx) {
+            const stats = statsData[monthIdx];
+            let totalWarnings = 0, totalAccuracySum = 0, totalValidDays = 0, totalGreat = 0;
+
+            stats.forEach(s => {
+                totalWarnings += s.warnings;
+                totalAccuracySum += s.accuracySum;
+                totalValidDays += s.validWarningDays;
+                totalGreat += s.greatCount;
+            });
+            return { totalWarnings, totalAccuracySum, totalValidDays, totalGreat };
+        }
+
+        function getRanking(monthIdx) {
+            const stats = statsData[monthIdx];
+            return personnel.map((name, i) => {
+                const s = stats[i];
+                // Rata-rata akurasi HANYA dari hari dimana mereka benar-benar mengeluarkan warning
+                const avgAcc = s.validWarningDays > 0 ? (s.accuracySum / s.validWarningDays) : 0;
+                return { name, warnings: s.warnings, acc: avgAcc, great: s.greatCount };
+            }).filter(d => d.warnings > 0).sort((a, b) => b.warnings - a.warnings || b.acc - a.acc); 
+        }
+
+        function getMonthlyTrend() {
+            const months = []; const warningsList = []; const accuraciesList = [];
+            for (let m = 0; m < 12; m++) {
+                months.push(monthNames[m].substring(0, 3));
+                const { totalWarnings, totalAccuracySum, totalValidDays } = getTotals(m);
+                warningsList.push(totalWarnings);
+                accuraciesList.push(totalValidDays > 0 ? (totalAccuracySum / totalValidDays) : 0);
+            }
+            return { months, warningsList, accuraciesList };
+        }
+
+        // ============================================================
+        // RENDER UI DASHBOARD
+        // ============================================================
+        function renderDashboard(monthIdx) {
+            if(personnel.length === 0) return ''; 
+
+            const month = monthNames[monthIdx];
+            const overall = getTotals(monthIdx);
+            const activeCount = statsData[monthIdx].filter(s => s.warnings > 0).length;
+            const avgAcc = overall.totalValidDays > 0 ? (overall.totalAccuracySum / overall.totalValidDays) : 0;
+            const ranking = getRanking(monthIdx);
+
+            let html = '';
+            
+            // SUMMARY CARDS
+            html += `
+                <div class="summary-grid">
+                    <div class="summary-card accent-red">
+                        <div class="label">⚠️ Total AD Warning</div>
+                        <div class="value">${overall.totalWarnings}</div>
+                        <div class="sub">Peringatan Dikeluarkan (${month})</div>
+                    </div>
+                    <div class="summary-card accent-green">
+                        <div class="label">🎯 Rata-Rata Akurasi</div>
+                        <div class="value">${avgAcc.toFixed(1)}%</div>
+                        <div class="sub">Validasi Saat Terjadi Peringatan</div>
+                    </div>
+                    <div class="summary-card accent-purple">
+                        <div class="label">🌟 Mutu "GREAT"</div>
+                        <div class="value">${overall.totalGreat}</div>
+                        <div class="sub">Total Evaluasi Sempurna</div>
+                    </div>
+                    <div class="summary-card accent-orange">
+                        <div class="label">👥 Forecaster Aktif</div>
+                        <div class="value">${activeCount}</div>
+                        <div class="sub">Dari total ${personnel.length} terdaftar</div>
+                    </div>
+                    <div class="summary-card accent-blue">
+                        <div class="label">🏆 Peringkat 1</div>
+                        <div class="value" style="font-size:20px; line-height:1.2; margin-top:6px;">${ranking.length > 0 ? ranking[0].name : 'NIHIL'}</div>
+                    </div>
+                </div>
+            `;
+
+            // CHART: TREN HARIAN
+            html += `
+                <div class="card" style="margin-bottom: 24px;">
+                    <div class="card-header">
+                        <h2>📆 Tren AD Warning Harian</h2>
+                        <span class="chip">${month} ${currentYear}</span>
+                    </div>
+                    <div class="chart-container tall">
+                        <canvas id="dailyTrendChart"></canvas>
+                    </div>
+                </div>
+            `;
+
+            // BARIS 1: TREND + POLAR (KONTRIBUSI)
+            html += `<div class="grid-2">
+                <div class="card">
+                    <div class="card-header">
+                        <h2>📈 Tren 12 Bulan (${currentYear})</h2><span class="chip">Perkembangan Kasus</span>
+                    </div>
+                    <div class="chart-container tall"><canvas id="trendChart"></canvas></div>
+                </div>
+                <div class="card">
+                    <div class="card-header"><h2>🕸️ Akurasi per Forecaster (Top 5)</h2><span class="chip">${month}</span></div>
+                    <div class="chart-container tall"><canvas id="radarChart"></canvas></div>
+                </div>
+            </div>`;
+
+            // BARIS 2: BAR (JUMLAH WARNING) + DOUGHNUT
+            html += `<div class="grid-2">
+                <div class="card">
+                    <div class="card-header"><h2>📊 Total Peringatan per Forecaster</h2><span class="chip">${month}</span></div>
+                    <div class="chart-container"><canvas id="barWarningChart"></canvas></div>
+                </div>
+                <div class="card">
+                    <div class="card-header"><h2>🍩 Distribusi Peringatan Diterbitkan</h2><span class="chip">${month}</span></div>
+                    <div class="chart-container"><canvas id="doughnutChart"></canvas></div>
+                </div>
+            </div>`;
+
+            // BARIS 3: HEATMAP + RANKING
+            const top8 = ranking.slice(0, 8);
+            html += `<div class="grid-2-1">
+                <div class="card">
+                    <div class="card-header"><h2>🔥 Heatmap Akurasi (Top 8)</h2><span class="chip">${month}</span></div>
+                    <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:12px;">`;
+            
+            if(top8.length === 0) html += `<p style="grid-column: span 4; text-align:center; color:#999;">NIHIL Peringatan di bulan ini.</p>`;
+            
+            top8.forEach((d) => {
+                const pct = Math.round(d.acc);
+                const color = pct >= 90 ? '#27ae60' : (pct >= 70 ? '#f39c12' : '#c0392b');
+                const barWidth = Math.min(pct, 100);
+                html += `
+                    <div style="background:#f9f9f9; padding:12px; border-radius:12px; text-align:center; border: 1px solid #eee;">
+                        <div style="font-weight:600; font-size:11px; color:var(--primary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${d.name}">${d.name}</div>
+                        <div style="margin:8px 0; background:#ecf0f1; border-radius:20px; height:12px; overflow:hidden;">
+                            <div style="width:${barWidth}%; height:100%; background:${color}; border-radius:20px; transition: width 0.6s ease;"></div>
+                        </div>
+                        <div style="font-size:18px; font-weight:700; color:${color};">${pct}%</div>
+                        <div style="font-size:11px; color:#7f8c8d;">${d.warnings} Warning</div>
+                    </div>`;
+            });
+            html += `</div></div>
+                <div class="card">
+                    <div class="card-header"><h2>🏆 Peringkat Kinerja</h2><span class="chip">${month}</span></div>
+                    <div style="max-height:280px; overflow-y:auto;">
+                        <table class="rank-table">
+                            <thead><tr><th>Rank</th><th>Forecaster</th><th>AD Warn</th><th>Akurasi</th></tr></thead>
+                            <tbody>`;
+            ranking.forEach((d, idx) => {
+                const rank = idx + 1;
+                let rClass = rank === 1 ? 'rank-1' : (rank === 2 ? 'rank-2' : (rank === 3 ? 'rank-3' : ''));
+                const pClass = d.acc >= 90 ? 'pct-good' : (d.acc >= 70 ? 'pct-warn' : 'pct-bad');
+                html += `<tr><td><span class="rank-badge ${rClass}">${rank}</span></td><td style="text-align:left;">${d.name}</td><td>${d.warnings}</td><td class="${pClass}">${d.acc.toFixed(1)}%</td></tr>`;
+            });
+            if(ranking.length === 0) html += `<tr><td colspan="4">NIHIL Data</td></tr>`;
+            html += `</tbody></table></div></div></div>`;
+
+            return html;
+        }
+
+        // ============================================================
+        // RENDER CHARTS
+        // ============================================================
+        let chartInstances = {};
+        function renderAllCharts(monthIdx) {
+            if(personnel.length === 0) return;
+            Object.values(chartInstances).forEach(ch => { if (ch) ch.destroy(); });
+            chartInstances = {};
+
+            const ranking = getRanking(monthIdx);
+            const trend = getMonthlyTrend();
+            const top5 = ranking.slice(0, 5);
+
+            // 0. CHART HARIAN
+            const daysInMonth = new Date(parseInt(currentYear), monthIdx + 1, 0).getDate();
+            const dailyLabels = [], dailyWarnings = [], dailyAkurasi = [];
+
+            for (let d = 1; d <= daysInMonth; d++) {
+                dailyLabels.push(d); 
+                const stats = dailyStats[monthIdx][d];
+                dailyWarnings.push(stats.warnings);
+                // Hanya hitung rata-rata jika ada warning, jika tidak set null agar grafik rapi
+                dailyAkurasi.push(stats.validWarningDays > 0 ? (stats.accuracySum / stats.validWarningDays) : null);
+            }
+
+            if(document.getElementById('dailyTrendChart')) {
+                chartInstances.dailyTrend = new Chart(document.getElementById('dailyTrendChart'), {
+                    type: 'line',
+                    data: {
+                        labels: dailyLabels,
+                        datasets: [
+                            {
+                                type: 'line', label: 'Rata-rata Akurasi (%)', data: dailyAkurasi, borderColor: '#e67e22', backgroundColor: 'transparent',
+                                tension: 0.3, borderWidth: 3, pointRadius: 4, yAxisID: 'y', spanGaps: true
+                            },
+                            {
+                                type: 'bar', label: 'Jumlah AD Warning', data: dailyWarnings, backgroundColor: '#e74c3c', borderRadius: 4, yAxisID: 'y1'
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        scales: { 
+                            y: { beginAtZero: true, max: 100, title: {display: true, text: 'Akurasi (%)'} },
+                            y1: { beginAtZero: true, position: 'right', grid: {display: false}, title: {display: true, text: 'Total Peringatan'}, ticks:{stepSize: 1} }
+                        },
+                        plugins: { tooltip: { mode: 'index', intersect: false } }
+                    }
+                });
+            }
+
+            // 1. TREND OVERALL (12 Bulan)
+            if(document.getElementById('trendChart')) {
+                chartInstances.trend = new Chart(document.getElementById('trendChart'), {
+                    type: 'line', data: { labels: trend.months,
+                        datasets: [
+                            { label: 'Total Peringatan', data: trend.warningsList, type: 'bar', backgroundColor: 'rgba(231, 76, 60, 0.5)', borderRadius: 4, yAxisID: 'y1' },
+                            { label: 'Akurasi (%)', data: trend.accuraciesList, type: 'line', borderColor: '#e67e22', tension: 0.3, borderWidth: 3, yAxisID: 'y', spanGaps:true }
+                        ]
+                    },
+                    options: { 
+                        responsive: true, maintainAspectRatio: false, 
+                        scales: { 
+                            y: { beginAtZero: true, max: 100 },
+                            y1: { beginAtZero: true, position: 'right', grid: {display:false}, ticks:{stepSize: 1} }
+                        } 
+                    }
+                });
+            }
+            
+            // 2. RADAR AKURASI
+            if(document.getElementById('radarChart') && top5.length > 0) {
+                // Gunakan Polar Area untuk membandingkan akurasi top 5 (Radar butuh parameter majemuk, karena parameter warning hanya 1 (akurasi), polar lebih cocok)
+                chartInstances.radar = new Chart(document.getElementById('radarChart'), {
+                    type: 'polarArea', data: { labels: top5.map(d => d.name.split(' ')[0]),
+                        datasets: [{ data: top5.map(d => d.acc), backgroundColor: top5.map((_, i) => `hsla(${10 + (i*20)}, 80%, 60%, 0.7)`) }]
+                    }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right' } }, scales: { r: { max: 100 } } }
+                });
+            }
+
+            // 3. BAR CHART - Total Peringatan per Forecaster
+            if(document.getElementById('barWarningChart') && top5.length > 0) {
+                chartInstances.barWarn = new Chart(document.getElementById('barWarningChart'), {
+                    type: 'bar', data: { 
+                        labels: top5.map(d => d.name.split(' ')[0]), // Nama Depan
+                        datasets: [{ 
+                            label: 'AD Warning Diterbitkan',
+                            data: top5.map(d => d.warnings), 
+                            backgroundColor: '#e74c3c',
+                            borderRadius: 6
+                        }] 
+                    },
+                    options: { 
+                        responsive: true, maintainAspectRatio: false, 
+                        plugins: { legend: { display: false } },
+                        scales: { y: { beginAtZero: true, ticks: {stepSize: 1} }, x: { grid: {display:false} } }
+                    }
+                });
+            }
+
+            // 4. DOUGHNUT (Proporsi Penerbitan Warning)
+            if(document.getElementById('doughnutChart') && ranking.length > 0) {
+                const colors = ['#e74c3c', '#e67e22', '#f1c40f', '#3498db', '#9b59b6', '#34495e', '#bdc3c7'];
+                chartInstances.doughnut = new Chart(document.getElementById('doughnutChart'), {
+                    type: 'doughnut', data: { 
+                        labels: ranking.map(d => d.name.split(' ')[0]), 
+                        datasets: [{ data: ranking.map(d => d.warnings), backgroundColor: colors.slice(0, ranking.length) }] 
+                    },
+                    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right' } } }
+                });
+            }
+        }
+
+        // ============================================================
+        // EVENT LISTENER & INIT
+        // ============================================================
+        function setupMonthTabs() {
+            const tabsContainer = document.getElementById('monthTabs');
+            tabsContainer.innerHTML = '';
+            const selMonth = parseInt(document.getElementById('monthSelect').value);
+            monthNames.forEach((name, idx) => {
+                const btn = document.createElement('button');
+                btn.className = 'month-tab' + (idx === selMonth ? ' active' : '');
+                btn.textContent = name.substring(0, 3);
+                btn.addEventListener('click', function() {
+                    document.querySelectorAll('.month-tab').forEach(t => t.classList.remove('active'));
+                    this.classList.add('active');
+                    document.getElementById('monthSelect').value = idx;
+                    updateDashboard(idx);
+                });
+                tabsContainer.appendChild(btn);
+            });
+        }
+
+        function updateDashboard(monthIdx) {
+            document.getElementById('dashboardContent').innerHTML = renderDashboard(monthIdx);
+            setTimeout(() => { renderAllCharts(monthIdx); }, 80);
+        }
+
+        function init() {
+            const now = new Date();
+            const dateStr = `${now.getDate()} ${monthNames[now.getMonth()]} ${now.getFullYear()}`;
+            document.getElementById('currentDate').textContent = dateStr;
+            document.getElementById('updateTime').textContent = `${dateStr}, ${now.toLocaleTimeString('id-ID', {hour:'2-digit', minute:'2-digit'})} WIB`;
+
+            document.getElementById('monthSelect').innerHTML = monthNames.map((m, i) => `<option value="${i}">${m}</option>`).join('');
+            document.getElementById('monthSelect').value = now.getMonth();
+
+            document.getElementById('yearSelect').addEventListener('change', function() {
+                currentYear = this.value;
+                fetchSheetData(); 
+            });
+            document.getElementById('monthSelect').addEventListener('change', function() {
+                const idx = parseInt(this.value);
+                document.querySelectorAll('.month-tab').forEach((tab, i) => tab.classList.toggle('active', i === idx));
+                updateDashboard(idx);
+            });
+
+            fetchSheetData();
+        }
+
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>

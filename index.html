@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Portal Dashboard Meteorologi</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', system-ui, sans-serif; }
+        body { background: #f0f5fc; color: #0b1d3a; display: flex; flex-direction: column; align-items: center; min-height: 100vh; padding: 40px 20px; }
+        .header { text-align: center; margin-bottom: 40px; }
+        .header h1 { font-size: 32px; color: #1a3a6b; margin-bottom: 10px; }
+        .header p { color: #5679a9; font-size: 16px; }
+        
+        .menu-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px; width: 100%; max-width: 1000px; }
+        
+        .menu-card { 
+            background: #fff; border-radius: 20px; padding: 30px 24px; text-align: center; 
+            box-shadow: 0 10px 30px rgba(0,20,50,0.05); text-decoration: none; color: inherit;
+            transition: all 0.3s ease; border: 1px solid rgba(0,0,0,0.04);
+            display: flex; flex-direction: column; align-items: center;
+        }
+        .menu-card:hover { transform: translateY(-10px); box-shadow: 0 15px 40px rgba(0,20,50,0.1); }
+        
+        .icon { width: 70px; height: 70px; border-radius: 20px; display: flex; align-items: center; justify-content: center; font-size: 32px; margin-bottom: 20px; color: #fff; }
+        .icon.synop { background: linear-gradient(135deg, #1a3a6b, #2d5aa0); }
+        .icon.metar { background: linear-gradient(135deg, #1abc9c, #27ae60); }
+        .icon.flight { background: linear-gradient(135deg, #2980b9, #3498db); }
+        .icon.warning { background: linear-gradient(135deg, #e74c3c, #e67e22); }
+        
+        .menu-card h2 { font-size: 20px; margin-bottom: 8px; }
+        .menu-card p { font-size: 14px; color: #7a9abb; line-height: 1.5; }
+        
+        .footer { margin-top: auto; padding-top: 40px; font-size: 13px; color: #7a9abb; text-align: center; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>Portal Dashboard Meteorologi</h1>
+        <p>Pilih layanan pengamatan untuk melihat metrik dan performa personil</p>
+    </div>
+
+    <div class="menu-grid">
+        <a href="synop.html" class="menu-card">
+            <div class="icon synop">📊</div>
+            <h2>Sandi SYNOP</h2>
+            <p>Monitoring total pengiriman dan akurasi sandi permukaan (Synoptic).</p>
+        </a>
+
+        <a href="metar.html" class="menu-card">
+            <div class="icon metar">🌤️</div>
+            <h2>Sandi METAR</h2>
+            <p>Pantau akurasi, ketepatan waktu, dan complain sandi penerbangan 30 menitan.</p>
+        </a>
+
+        <a href="tafor.html" class="menu-card">
+            <div class="icon flight">✈️</div>
+            <h2>Sandi TAFOR</h2>
+            <p>Prakiraan cuaca penerbangan.</p>
+        </a>
+
+        <a href="flightdoc.html" class="menu-card">
+            <div class="icon flight">✈️</div>
+            <h2>Flight Document</h2>
+            <p>Realisasi penyediaan dokumen penerbangan reguler (IW) dan charter.</p>
+        </a>
+
+        <a href="adwarning.html" class="menu-card">
+            <div class="icon warning">⚠️</div>
+            <h2>AD Warning</h2>
+            <p>Rekapitulasi penerbitan peringatan dini cuaca bandara dan evaluasi mutunya.</p>
+        </a>
+    </div>
+
+    <div class="footer">
+        &copy; 2026 Stasiun Meteorologi &middot; Interaktif Dashboard System
+    </div>
+
+</body>
+</html>
