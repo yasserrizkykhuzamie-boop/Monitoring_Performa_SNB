@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard Validator Sandi CLIMAT</title>
+    <title>Dashboard Validator Sandi CLIMAT BMKG</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
@@ -20,15 +20,15 @@
 </head>
 <body class="bg-slate-50 text-slate-800 font-sans min-h-screen flex flex-col">
 
-    <nav class="bg-blue-700 text-white shadow-md">
+    <nav class="bg-blue-800 text-white shadow-md border-b-4 border-blue-600">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="flex items-center justify-between h-16">
                 <div class="flex items-center gap-3">
                     <i class="fa-solid fa-cloud-sun-rain text-2xl"></i>
-                    <span class="font-bold text-xl tracking-wide">Validator CLIMAT</span>
+                    <span class="font-bold text-xl tracking-wide">Validator CLIMAT <span class="font-light text-blue-300">BMKG PRO</span></span>
                 </div>
                 <div>
-                    <span class="text-sm bg-blue-800 px-3 py-1 rounded-full border border-blue-600">v2.4 - Full BMKG Rules</span>
+                    <span class="text-xs bg-blue-900 px-3 py-1.5 rounded border border-blue-700 font-bold tracking-wider">v3.0 Stage 4 Lock Down</span>
                 </div>
             </div>
         </div>
@@ -38,8 +38,8 @@
         
         <div class="mb-6 flex justify-between items-end">
             <div>
-                <h1 class="text-2xl font-bold text-slate-900">Analisis & Validasi Sandi CLIMAT</h1>
-                <p class="text-slate-600">Mendukung input satu laporan maupun massal (batch). Diperkuat aturan ketat WMO & BMKG Indonesia.</p>
+                <h1 class="text-2xl font-bold text-slate-900">Analisis & Validasi Sandi CLIMAT (Full Forensik BMKG)</h1>
+                <p class="text-slate-600">Dilengkapi Cross-Section Audit (Seksi 1 vs 3, Seksi 1 vs 4), Hierarki Curah Hujan, & Sintaksis WMO.</p>
             </div>
             <button id="btnDownloadExcel" onclick="downloadExcelReport()" class="hidden bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-bold shadow transition-colors flex items-center gap-2">
                 <i class="fa-solid fa-file-excel"></i> Download Laporan Excel
@@ -52,8 +52,10 @@
                 <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
                     <div class="flex justify-between items-center mb-3">
                         <label for="codeInput" class="block text-sm font-bold text-slate-700">Input Sandi</label>
-                        <button onclick="loadExample()" class="text-[11px] text-blue-600 hover:text-blue-800 bg-blue-50 px-2 py-1 rounded font-bold">Contoh 1 Laporan</button>
-                        <button onclick="loadBatchExample()" class="text-[11px] text-purple-600 hover:text-purple-800 bg-purple-50 px-2 py-1 rounded font-bold">Contoh Batch</button>
+                        <div class="flex gap-1">
+                            <button onclick="loadExample()" class="text-[11px] text-blue-600 hover:text-blue-800 bg-blue-50 px-2 py-1 rounded font-bold">Contoh 1 Laporan</button>
+                            <button onclick="loadBatchExample()" class="text-[11px] text-purple-600 hover:text-purple-800 bg-purple-50 px-2 py-1 rounded font-bold">Contoh Batch</button>
+                        </div>
                     </div>
                     
                     <textarea id="codeInput" rows="12" 
@@ -76,7 +78,7 @@
                     <ul class="text-sm space-y-2 text-slate-600">
                         <li class="flex justify-between border-b border-slate-100 pb-1"><span>Format Header:</span> <span id="sumHeader" class="font-bold text-slate-900">-</span></li>
                         <li class="flex justify-between border-b border-slate-100 pb-1"><span>Total Grup Data:</span> <span id="sumTotalGroups" class="font-bold text-slate-900">-</span></li>
-                        <li class="flex justify-between border-b border-slate-100 pb-1"><span>Struktur Kelompok:</span> <span id="sumDuplicate" class="font-bold text-slate-900">-</span></li>
+                        <li class="flex justify-between border-b border-slate-100 pb-1"><span>Forensik BMKG:</span> <span id="sumBMKG" class="font-bold text-slate-900">-</span></li>
                         <li class="flex justify-between"><span>Karakter Akhir (=):</span> <span id="sumEndChar" class="font-bold text-slate-900">-</span></li>
                     </ul>
                 </div>
@@ -105,14 +107,15 @@
     <script>
         let batchReports = []; 
         let globalDuplicateError = false; 
+        let globalBMKGError = false;
 
-        // Kalender hari dalam bulan standar (termasuk toleransi kabisat Feb=29)
         const daysInMonth = { 1: 31, 2: 29, 3: 31, 4: 30, 5: 31, 6: 30, 7: 31, 8: 31, 9: 30, 10: 31, 11: 30, 12: 31 };
 
-        // Contoh Tunggal lengkap dengan grup 8 & 9 valid sesuai regulasi BMKG
-        const exampleDataSingle = "CLIMAT 07020 96749\n111 10095 21013 30276015 69999412 7150075 8000000 9000000\n222 06190 19982 21013 30273010 403210224 5363 6010415 7150 8030000 9000000\n333 03115 10200 20000 32515 41005 50100 60000 70000 8120100 9040812\n444 0028217 1026619 2034230 3023215 4056425 5425215 61500 711200\n=";
+        // Contoh Tunggal mematuhi seluruh sinkronisasi lintas seksi (S1 nrnr = S3 R01 = 15 hari)
+        const exampleDataSingle = "CLIMAT 07020 96749\n111 10095 21013 30276015 60124415 7150075 8000000 9000000\n222 06190 19982 21013 30273010 403210224 5363 6010415/ 7150 8030000 9000000\n333 03115 10200 20000 31510 40501 50000 60000 70000\n444 0028217 1026619 2034230 3023215 4056425 5425215 61500 711200\n=";
         
-        const exampleDataBatch = `CLIMAT 07020 96749\n111 10095 21013 30276015 69999412 8000000 9000000\n=\n\nCLIMAT 07020 96001\n111 10099 21010 30280010 68888415 8000000 9000000\n=\n\nCLIMAT 07020 97012\n111 10090 21010 21011 30280010 68888415 8000000 9000000\n=`;
+        // Contoh Batch memuat pelanggaran kontradiksi pada Stasiun 3
+        const exampleDataBatch = `CLIMAT 07020 96749\n111 10095 21013 30276015 60124415 8000000 9000000\n333 31510 40501 50000\n=\n\nCLIMAT 07020 96001\n111 10099 21010 30280010 60100412 8000000 9000000\n333 31208 40301 50000\n=\n\nCLIMAT 07020 97012\n111 10090 21010 30280010 60100X15 8000000 9000000\n333 30510 40201 50000\n=`;
 
         function loadExample() { document.getElementById('codeInput').value = exampleDataSingle; }
         function loadBatchExample() { document.getElementById('codeInput').value = exampleDataBatch; }
@@ -153,72 +156,152 @@
                 if(duplicates.length > 0) {
                     let uniqueDups = [...new Set(duplicates)];
                     uniqueDups.forEach(d => {
-                        dupErrs.push(`Seksi ${sec} memiliki duplikasi Kelompok ${d}`);
+                        dupErrs.push(`Seksi ${sec} terdeteksi duplikasi Kelompok ${d}`);
                     });
                 }
             }
             return dupErrs;
         }
 
-        // FUNGSI CEK ATURAN METEOROLOGIS BMKG (Dipanggil di Single & Batch Mode)
+        // FUNGSI INTI: AUDIT FORENSIK BMKG STAGE 4 LOCK DOWN
         function checkBMKGRules(parsedData, maxDays) {
             let bmkgErrs = [];
             let s1 = parsedData[1] || [];
+            let s2 = parsedData[2] || [];
             let s3 = parsedData[3] || [];
             let s4 = parsedData[4] || [];
 
-            // 1. Audit Kehadiran Wajib Kelompok Cacat Hari (Group 8 & 9 di Seksi 1)
-            let s1_heads = s1.map(g => g.charAt(0));
+            // ================= 1. AUDIT SEKSI 1 =================
+            let nr_S1 = null;
+            let mean_T = null;
+
             if(s1.length > 0) {
+                let s1_heads = s1.map(g => g.charAt(0));
+                // Mandatori Ekor Seksi 1
                 if(!s1_heads.includes('8') || !s1_heads.includes('9')) {
-                    bmkgErrs.push("BMKG [Seksi 1]: Kelompok 8 & 9 (rekap hari hilang) wajib hadir meskipun bernilai 0.");
+                    bmkgErrs.push("[Seksi 1]: Kelompok 8 & 9 (rekap hari hilang) wajib hadir di ekor Seksi 1.");
                 }
-            }
 
-            // 2. Toleransi Hari Hilang > 10 Hari (Seksi 1)
-            let g8 = s1.find(g => g.charAt(0) === '8' && g.length === 7);
-            if (g8) {
-                let m_P = parseInt(g8.substring(1, 3), 10);
-                let m_T = parseInt(g8.substring(3, 5), 10);
-                let g3 = s1.find(g => g.charAt(0) === '3');
-                let g1 = s1.find(g => g.charAt(0) === '1');
-
-                if (m_T > 10 && g3 && !g3.includes("///")) {
-                    bmkgErrs.push(`BMKG Kontradiksi [Seksi 1 Klp 3]: Hari hilang suhu (${m_T} hari) > 10 hari, wajib disandikan garis miring (///).`);
-                }
-                if (m_P > 10 && g1 && !g1.includes("////")) {
-                    bmkgErrs.push(`BMKG Kontradiksi [Seksi 1 Klp 1]: Hari hilang tekanan (${m_P} hari) > 10 hari, wajib disandikan garis miring (////).`);
-                }
-            }
-
-            // 3. Ambang Batas Hari Seksi 3 & Kontradiksi Fisis Suhu
-            s3.forEach(token => {
-                if (token.length === 5) {
-                    let val1 = parseInt(token.substring(1, 3), 10);
-                    let val2 = parseInt(token.substring(3, 5), 10);
-
-                    if (!isNaN(val1) && val1 > maxDays) bmkgErrs.push(`BMKG Batas Hari [Seksi 3 Klp ${token}]: Nilai ${val1} hari melampaui usia bulan (${maxDays} hari).`);
-                    if (!isNaN(val2) && val2 > maxDays) bmkgErrs.push(`BMKG Batas Hari [Seksi 3 Klp ${token}]: Nilai ${val2} hari melampaui usia bulan (${maxDays} hari).`);
-                    
-                    if (token.charAt(0) === '0' && val2 > val1) {
-                        bmkgErrs.push(`BMKG Fisis [Seksi 3 Klp 0]: Hari suhu >= 30°C (${val2}) tidak boleh melebihi suhu >= 25°C (${val1}).`);
+                // Cacat Huruf X pada Rd & Ambil nrnr
+                let g6 = s1.find(g => g.charAt(0) === '6');
+                if(g6) {
+                    if(g6.toUpperCase().includes('X')) {
+                        bmkgErrs.push(`[Seksi 1 Klp 6]: Mengandung huruf ilegal 'X'. Kuantil Rd wajib angka 0-6 atau garis miring (/).`);
+                    } else if (g6.length === 8) {
+                        nr_S1 = parseInt(g6.substring(6, 8), 10);
                     }
                 }
-            });
 
-            // 4. Penanggalan Ekstrem Seksi 4
-            s4.forEach(token => {
-                let head = token.charAt(0);
-                if (["0", "1", "2", "3", "4", "5"].includes(head) && token.length === 7) {
-                    let dayOfEvent = parseInt(token.substring(5, 7), 10);
-                    if (!isNaN(dayOfEvent)) {
-                        if (dayOfEvent > 50) dayOfEvent -= 50;
-                        if (dayOfEvent > maxDays || dayOfEvent === 0) {
-                            bmkgErrs.push(`BMKG Penanggalan [Seksi 4 Klp ${token}]: Tanggal kejadian (${dayOfEvent}) tidak ada dalam kalender bulan berjalan (${maxDays} hari).`);
+                // Ambil Rerata Suhu (mean_T) & Cacat sn
+                let g3 = s1.find(g => g.charAt(0) === '3');
+                if(g3 && g3.length === 8) {
+                    let sn = g3.charAt(1);
+                    if(!['0','1'].includes(sn)) bmkgErrs.push(`[Seksi 1 Klp 3]: Penanda sn (${sn}) melanggar aturan, wajib '0' atau '1'.`);
+                    let sign = sn === "1" ? -1 : 1;
+                    mean_T = (parseInt(g3.substring(2, 5), 10) / 10) * sign;
+                }
+
+                // Toleransi Data Hilang > 10 Hari
+                let g8 = s1.find(g => g.charAt(0) === '8' && g.length === 7);
+                if (g8) {
+                    let m_P = parseInt(g8.substring(1, 3), 10);
+                    let m_T = parseInt(g8.substring(3, 5), 10);
+                    let g1 = s1.find(g => g.charAt(0) === '1');
+                    if (m_T > 10 && g3 && !g3.includes("///")) {
+                        bmkgErrs.push(`[Seksi 1 Klp 3]: Hari hilang suhu (${m_T} hari) > 10 hari, wajib disandikan slashes (///).`);
+                    }
+                    if (m_P > 10 && g1 && !g1.includes("////")) {
+                        bmkgErrs.push(`[Seksi 1 Klp 1]: Hari hilang tekanan (${m_P} hari) > 10 hari, wajib disandikan slashes (////).`);
+                    }
+                }
+            }
+
+            // ================= 2. AUDIT SEKSI 2 =================
+            if(s2.length > 0) {
+                let g6_s2 = s2.find(g => g.charAt(0) === '6');
+                if (g6_s2 && !g6_s2.endsWith("/")) {
+                    bmkgErrs.push(`[Seksi 2 Klp 6]: Curah hujan normal (${g6_s2}) melanggar regulasi BMKG, wajib ditutup garis miring (/).`);
+                }
+            }
+
+            // ================= 3. AUDIT SEKSI 3 =================
+            if(s3.length > 0) {
+                // Kelompok 8 ilegal di Seksi 3
+                let g8_s3 = s3.find(g => g.charAt(0) === '8');
+                if(g8_s3) {
+                    bmkgErrs.push(`[Seksi 3]: Kelompok berkepala 8 (${g8_s3}) adalah ilegal di Seksi 3.`);
+                }
+
+                // Ambang Batas Hari & Kontradiksi Suhu
+                s3.forEach(token => {
+                    if (token.length === 5) {
+                        let val1 = parseInt(token.substring(1, 3), 10);
+                        let val2 = parseInt(token.substring(3, 5), 10);
+
+                        if (!isNaN(val1) && val1 > maxDays) bmkgErrs.push(`[Seksi 3 Klp ${token}]: Nilai ${val1} hari melampaui usia kalender bulan (${maxDays} hari).`);
+                        if (!isNaN(val2) && val2 > maxDays) bmkgErrs.push(`[Seksi 3 Klp ${token}]: Nilai ${val2} hari melampaui usia kalender bulan (${maxDays} hari).`);
+                        
+                        if (token.charAt(0) === '0' && val2 > val1) {
+                            bmkgErrs.push(`[Seksi 3 Klp 0]: Hari suhu >= 30°C (${val2}) tidak masuk akal melebihi suhu >= 25°C (${val1}).`);
                         }
                     }
+                });
+
+                // Audit Hierarki Curah Hujan & Cross-Section S1 vs S3
+                let r01 = null, r05 = null, r10 = null, r50 = null, r100 = null, r150 = null;
+                let g3_s3 = s3.find(g => g.charAt(0) === '3');
+                let g4_s3 = s3.find(g => g.charAt(0) === '4');
+                let g5_s3 = s3.find(g => g.charAt(0) === '5');
+
+                if(g3_s3 && g3_s3.length === 5) { r01 = parseInt(g3_s3.substring(1, 3), 10); r05 = parseInt(g3_s3.substring(3, 5), 10); }
+                if(g4_s3 && g4_s3.length === 5) { r10 = parseInt(g4_s3.substring(1, 3), 10); r50 = parseInt(g4_s3.substring(3, 5), 10); }
+                if(g5_s3 && g5_s3.length === 5) { r100 = parseInt(g5_s3.substring(1, 3), 10); r150 = parseInt(g5_s3.substring(3, 5), 10); }
+
+                // Cross Seksi 1 vs 3
+                if (nr_S1 !== null && r01 !== null && !isNaN(nr_S1) && !isNaN(r01) && nr_S1 !== r01) {
+                    bmkgErrs.push(`Cross-Check [Seksi 1 vs 3]: Hari hujan S1 (${nr_S1} hari) TIDAK SINKRON dengan R01 di S3 (${r01} hari).`);
                 }
-            });
+
+                // Monotonic Decreasing Hierarchy
+                if (r01 !== null && r05 !== null && r10 !== null && r50 !== null && r100 !== null && r150 !== null) {
+                    if (r01 < r05 || r05 < r10 || r10 < r50 || r50 < r100 || r100 < r150) {
+                        bmkgErrs.push(`[Seksi 3]: Distribusi hari hujan melanggar hierarki matematika (R01:${r01} >= R05:${r05} >= R10:${r10} >= R50:${r50} >= R100:${r100} >= R150:${r150}).`);
+                    }
+                }
+            }
+
+            // ================= 4. AUDIT SEKSI 4 =================
+            if(s4.length > 0) {
+                // Cross Check Termodinamika Suhu S1 vs S4
+                let g3_s4 = s4.find(g => g.charAt(0) === '3');
+                if (mean_T !== null && !isNaN(mean_T) && g3_s4 && g3_s4.length === 7) {
+                    let signLow = g3_s4.charAt(1) === "1" ? -1 : 1;
+                    let extLow_T = (parseInt(g3_s4.substring(2, 5), 10) / 10) * signLow;
+                    if (mean_T < extLow_T) {
+                        bmkgErrs.push(`Anomali Termodinamika [Seksi 1 vs 4]: Rerata bulanan (${mean_T}°C) mustahil lebih dingin dari ekstrem terendah (${extLow_T}°C).`);
+                    }
+                }
+
+                // Aturan Kaku BMKG Stage 4: Klp 7 tepat 5 karakter
+                let g7_s4 = s4.find(g => g.charAt(0) === '7');
+                if (g7_s4 && g7_s4.length !== 5 && g7_s4.length !== 6) {
+                    bmkgErrs.push(`[Seksi 4 Klp 7]: Panjang digit tidak sah (${g7_s4}).`);
+                }
+
+                // Penanggalan Ekstrem
+                s4.forEach(token => {
+                    let head = token.charAt(0);
+                    if (["0", "1", "2", "3", "4", "5"].includes(head) && token.length === 7) {
+                        let dayOfEvent = parseInt(token.substring(5, 7), 10);
+                        if (!isNaN(dayOfEvent)) {
+                            if (dayOfEvent > 50) dayOfEvent -= 50;
+                            if (dayOfEvent > maxDays || dayOfEvent === 0) {
+                                bmkgErrs.push(`[Seksi 4 Klp ${token}]: Tanggal kejadian (${dayOfEvent}) tidak ada dalam kalender bulan berjalan (${maxDays} hari).`);
+                            }
+                        }
+                    }
+                });
+            }
 
             return bmkgErrs;
         }
@@ -255,10 +338,18 @@
             reports.forEach((reportString, idx) => {
                 globalIsValid = true;
                 globalDuplicateError = false;
+                globalBMKGError = false;
                 let errorMessages = [];
 
                 let cleanText = reportString.replace(/\s+/g, ' ');
                 let tokens = cleanText.split(' ');
+                
+                // Gerbang Laporan NIL
+                if(tokens[1] === "NIL") {
+                    batchReports.push({ no: idx + 1, bulan: "-", id: "-", status: "VALID", pesan: "Laporan kosong (NIL) valid." });
+                    return;
+                }
+
                 let parsedData = { 0: [], 1: [], 2: [], 3: [], 4: [] };
                 let currentSection = -1;
                 let hasEndChar = false;
@@ -266,15 +357,9 @@
                 for (let i = 0; i < tokens.length; i++) {
                     let token = tokens[i];
                     if (token === "=") { hasEndChar = true; continue; }
-                    if (token === "CLIMAT") { currentSection = 0; parsedData[0].push(token); }
+                    if (token === "CLIMAT" || token === "CLIMAT TEMP") { currentSection = 0; parsedData[0].push(token); }
                     else if (["111", "222", "333", "444"].includes(token)) { currentSection = parseInt(token.charAt(0)); }
                     else { if (currentSection !== -1) parsedData[currentSection].push(token); }
-                }
-
-                let dupErrs = checkDuplicates(parsedData);
-                if(dupErrs.length > 0) {
-                    globalIsValid = false;
-                    errorMessages = errorMessages.concat(dupErrs);
                 }
 
                 let stDate = "-", stId = "-";
@@ -284,21 +369,20 @@
                     stId = parsedData[0][2];
                     if(stDate && stDate.length === 5 && !isNaN(stDate)) {
                         let mm = parseInt(stDate.substring(0, 2), 10);
-                        if(mm > 50) mm -= 50; // Aturan CLIMAT TEMP knot
+                        if(mm > 50) mm -= 50; 
                         maxDays = daysInMonth[mm] || 31;
                     }
                 }
 
-                // Cek Aturan Fisis BMKG
+                let dupErrs = checkDuplicates(parsedData);
+                if(dupErrs.length > 0) { globalIsValid = false; errorMessages = errorMessages.concat(dupErrs); }
+
                 let bmkgErrs = checkBMKGRules(parsedData, maxDays);
-                if(bmkgErrs.length > 0) {
-                    globalIsValid = false;
-                    errorMessages = errorMessages.concat(bmkgErrs);
-                }
+                if(bmkgErrs.length > 0) { globalIsValid = false; errorMessages = errorMessages.concat(bmkgErrs); }
 
                 if (parsedData[0].length > 0) {
-                    let isClimat = parsedData[0][0] === 'CLIMAT';
-                    if(!isClimat) { globalIsValid = false; errorMessages.push("Tidak diawali 'CLIMAT'"); }
+                    let isClimat = (parsedData[0][0] === 'CLIMAT' || parsedData[0][0] === 'CLIMAT TEMP');
+                    if(!isClimat) { globalIsValid = false; errorMessages.push("Kepala sandi tidak sah"); }
                     let mmjjj = parsedData[0][1] || "";
                     if (!(mmjjj.length === 5 && !isNaN(mmjjj))) { globalIsValid = false; errorMessages.push("Format Bulan/Tahun (MMJJJ) salah"); }
                     let stasiun = parsedData[0][2] || "";
@@ -335,7 +419,7 @@
                     bulan: stDate,
                     id: stId,
                     status: globalIsValid ? "VALID" : "ERROR",
-                    pesan: globalIsValid ? "Format struktur & fisis sudah sesuai WMO-BMKG." : uniqueErrors.join(" | ")
+                    pesan: globalIsValid ? "Format struktur & forensik sudah sesuai WMO-BMKG." : uniqueErrors.join(" | ")
                 };
                 batchReports.push(reportObj);
 
@@ -386,18 +470,25 @@
             const cleanText = rawInput.replace(/\s+/g, ' ');
             const tokens = cleanText.split(' ');
 
+            if(tokens[1] === "NIL") {
+                container.innerHTML = `<div class="p-6 bg-green-50 border border-green-200 rounded-xl text-green-800 font-bold"><i class="fa-solid fa-check-circle mr-2"></i> Laporan Kosong (NIL) Valid.</div>`;
+                updateSummary(true, true, true, 0, []);
+                return;
+            }
+
             const parsedData = { 0: [], 1: [], 2: [], 3: [], 4: [] };
             let currentSection = -1;
             let hasEndChar = false;
             globalIsValid = true; 
             globalDuplicateError = false;
+            globalBMKGError = false;
             let totalGroups = 0;
 
             for (let i = 0; i < tokens.length; i++) {
                 let token = tokens[i];
                 if (token === "=") { hasEndChar = true; continue; }
 
-                if (token === "CLIMAT") {
+                if (token === "CLIMAT" || token === "CLIMAT TEMP") {
                     currentSection = 0; parsedData[0].push(token);
                 } else if (["111", "222", "333", "444"].includes(token)) {
                     currentSection = parseInt(token.charAt(0));
@@ -420,15 +511,10 @@
             }
 
             let dupErrs = checkDuplicates(parsedData);
-            if(dupErrs.length > 0) {
-                globalIsValid = false;
-                globalDuplicateError = true;
-            }
+            if(dupErrs.length > 0) { globalIsValid = false; globalDuplicateError = true; }
 
             let bmkgErrs = checkBMKGRules(parsedData, maxDays);
-            if(bmkgErrs.length > 0) {
-                globalIsValid = false;
-            }
+            if(bmkgErrs.length > 0) { globalIsValid = false; globalBMKGError = true; }
 
             let allErrors = dupErrs.concat(bmkgErrs);
 
@@ -453,7 +539,7 @@
 
         function validateSection0(groups) {
             let resHTML = '';
-            let isClimat = groups[0] === 'CLIMAT';
+            let isClimat = (groups[0] === 'CLIMAT' || groups[0] === 'CLIMAT TEMP');
             if(!isClimat) globalIsValid = false;
             resHTML += buildSegment("ID", groups[0] || "?", isClimat ? "" : "Harus kata CLIMAT");
 
@@ -461,7 +547,8 @@
             let isValidDate = false;
             let dateErr = "Format MMJJJ salah";
             if (mmjjj.length === 5 && !isNaN(mmjjj)) {
-                let mm = parseInt(mmjjj.substring(0,2));
+                let mm = parseInt(mmjjj.substring(0,2), 10);
+                if (mm > 50) mm -= 50;
                 if (mm >= 1 && mm <= 12) { isValidDate = true; dateErr = ""; } 
                 else { dateErr = "Bulan (MM) harus 01-12"; }
             }
@@ -505,9 +592,12 @@
             }
             else if (sectionId === 1 && head === '6') {
                 if (group.length !== 8) { valid = false; err = "Harus 8 digit"; }
+                let rd = group.substring(5,6);
+                let rdErr = rd.toUpperCase() === 'X';
+                if (rdErr) { valid = false; err = "Kuantil dilarang huruf X"; }
                 parts.push({ l: '6', v: head, d: 'Indikator' });
                 parts.push({ l: 'R<sub>1</sub>R<sub>1</sub>R<sub>1</sub>R<sub>1</sub>', v: group.substring(1,5), d: 'Jumlah Endapan (Curah Hujan)' });
-                parts.push({ l: 'R<sub>d</sub>', v: group.substring(5,6), d: 'Kuantil Curah Hujan' });
+                parts.push({ l: 'R<sub>d</sub>', v: rd, d: 'Kuantil Curah Hujan', e: rdErr });
                 parts.push({ l: 'n<sub>r</sub>n<sub>r</sub>', v: group.substring(6,8), d: 'Jumlah Hari Hujan' });
             }
             else if (sectionId === 1 && head === '7') {
@@ -573,15 +663,16 @@
                 parts.push({ l: 'T<sub>n</sub>T<sub>n</sub>T<sub>n</sub>', v: group.substring(6,9), d: 'Nilai Normal Suhu Minimum' });
             }
             else if (sectionId === 2 && head === '5') {
-                if (group.length !== 4) { valid = false; err = "Harus 4 digit (5eee)"; }
+                if (group.length !== 4) { valid = false; err = "Harus 4 digit"; }
                 parts.push({ l: '5', v: head, d: 'Indikator' });
                 parts.push({ l: 'eee', v: group.substring(1,4), d: 'Nilai normal uap air bulanan' });
             }
             else if (sectionId === 2 && head === '6') {
-                if (group.length !== 7) { valid = false; err = "Harus 7 digit"; }
+                let endsSlash = group.endsWith('/');
+                if (group.length !== 7 || !endsSlash) { valid = false; err = "Wajib 7 digit & ditutup garis miring (/)"; }
                 parts.push({ l: '6', v: head, d: 'Indikator' });
                 parts.push({ l: 'R<sub>1</sub>R<sub>1</sub>R<sub>1</sub>R<sub>1</sub>', v: group.substring(1,5), d: 'Nilai normal curah hujan' });
-                parts.push({ l: 'n<sub>r</sub>n<sub>r</sub>', v: group.substring(5,7), d: 'Jumlah rata-rata hari hujan' });
+                parts.push({ l: 'n<sub>r</sub>n<sub>r</sub>', v: group.substring(5,7), d: 'Jumlah rata-rata hari hujan', e: !endsSlash });
             }
             else if (sectionId === 2 && head === '7') {
                 if (group.length !== 4) { valid = false; err = "Harus 4 digit"; }
@@ -610,7 +701,7 @@
                 let v2 = parseInt(group.substring(3,5), 10);
                 let e1 = (!isNaN(v1) && v1 > maxDays);
                 let e2 = (!isNaN(v2) && (v2 > maxDays || v2 > v1));
-                if(e1 || e2) { valid = false; err = err ? err + "<br>Melebihi hari bulan/Fisis salah" : "Melebihi hari bulan/Fisis salah"; }
+                if(e1 || e2) { valid = false; err = err ? err + "<br>Melampaui usia bulan / Fisis salah" : "Melampaui usia bulan / Fisis salah"; }
 
                 parts.push({ l: '0', v: head, d: 'Indikator' });
                 parts.push({ l: 'T<sub>25</sub>T<sub>25</sub>', v: group.substring(1,3), d: 'Jml hari T.Maks ≥ 25°C', e: e1 });
@@ -622,7 +713,7 @@
                 let v2 = parseInt(group.substring(3,5), 10);
                 let e1 = (!isNaN(v1) && v1 > maxDays);
                 let e2 = (!isNaN(v2) && v2 > maxDays);
-                if(e1 || e2) { valid = false; err = err ? err + "<br>Melebihi batas hari bulan" : "Melebihi batas hari bulan"; }
+                if(e1 || e2) { valid = false; err = err ? err + "<br>Melampaui batas hari bulan" : "Melampaui batas hari bulan"; }
 
                 parts.push({ l: '1', v: head, d: 'Indikator' });
                 parts.push({ l: 'T<sub>35</sub>T<sub>35</sub>', v: group.substring(1,3), d: 'Jml hari T.Maks ≥ 35°C', e: e1 });
@@ -634,7 +725,7 @@
                 let v2 = parseInt(group.substring(3,5), 10);
                 let e1 = (!isNaN(v1) && v1 > maxDays);
                 let e2 = (!isNaN(v2) && v2 > maxDays);
-                if(e1 || e2) { valid = false; err = err ? err + "<br>Melebihi batas hari bulan" : "Melebihi batas hari bulan"; }
+                if(e1 || e2) { valid = false; err = err ? err + "<br>Melampaui batas hari bulan" : "Melampaui batas hari bulan"; }
 
                 parts.push({ l: '2', v: head, d: 'Indikator' });
                 parts.push({ l: 'T<sub>n0</sub>T<sub>n0</sub>', v: group.substring(1,3), d: 'Jml hari T.Min < 0°C', e: e1 });
@@ -646,7 +737,7 @@
                 let v2 = parseInt(group.substring(3,5), 10);
                 let e1 = (!isNaN(v1) && v1 > maxDays);
                 let e2 = (!isNaN(v2) && v2 > maxDays);
-                if(e1 || e2) { valid = false; err = err ? err + "<br>Melebihi batas hari bulan" : "Melebihi batas hari bulan"; }
+                if(e1 || e2) { valid = false; err = err ? err + "<br>Melampaui batas hari bulan" : "Melampaui batas hari bulan"; }
 
                 parts.push({ l: '3', v: head, d: 'Indikator' });
                 parts.push({ l: 'R<sub>01</sub>R<sub>01</sub>', v: group.substring(1,3), d: 'Jml hari Hujan ≥ 1.0 mm', e: e1 });
@@ -658,7 +749,7 @@
                 let v2 = parseInt(group.substring(3,5), 10);
                 let e1 = (!isNaN(v1) && v1 > maxDays);
                 let e2 = (!isNaN(v2) && v2 > maxDays);
-                if(e1 || e2) { valid = false; err = err ? err + "<br>Melebihi batas hari bulan" : "Melebihi batas hari bulan"; }
+                if(e1 || e2) { valid = false; err = err ? err + "<br>Melampaui batas hari bulan" : "Melampaui batas hari bulan"; }
 
                 parts.push({ l: '4', v: head, d: 'Indikator' });
                 parts.push({ l: 'R<sub>10</sub>R<sub>10</sub>', v: group.substring(1,3), d: 'Jml hari Hujan ≥ 10.0 mm', e: e1 });
@@ -670,7 +761,7 @@
                 let v2 = parseInt(group.substring(3,5), 10);
                 let e1 = (!isNaN(v1) && v1 > maxDays);
                 let e2 = (!isNaN(v2) && v2 > maxDays);
-                if(e1 || e2) { valid = false; err = err ? err + "<br>Melebihi batas hari bulan" : "Melebihi batas hari bulan"; }
+                if(e1 || e2) { valid = false; err = err ? err + "<br>Melampaui batas hari bulan" : "Melampaui batas hari bulan"; }
 
                 parts.push({ l: '5', v: head, d: 'Indikator' });
                 parts.push({ l: 'R<sub>100</sub>R<sub>100</sub>', v: group.substring(1,3), d: 'Jml hari Hujan ≥ 100.0 mm', e: e1 });
@@ -682,7 +773,7 @@
                 let v2 = parseInt(group.substring(3,5), 10);
                 let e1 = (!isNaN(v1) && v1 > maxDays);
                 let e2 = (!isNaN(v2) && v2 > maxDays);
-                if(e1 || e2) { valid = false; err = err ? err + "<br>Melebihi batas hari bulan" : "Melebihi batas hari bulan"; }
+                if(e1 || e2) { valid = false; err = err ? err + "<br>Melampaui batas hari bulan" : "Melampaui batas hari bulan"; }
 
                 parts.push({ l: '6', v: head, d: 'Indikator' });
                 parts.push({ l: 's<sub>00</sub>s<sub>00</sub>', v: group.substring(1,3), d: 'Jml hari Salju > 0.0 cm', e: e1 });
@@ -694,18 +785,16 @@
                 let v2 = parseInt(group.substring(3,5), 10);
                 let e1 = (!isNaN(v1) && v1 > maxDays);
                 let e2 = (!isNaN(v2) && v2 > maxDays);
-                if(e1 || e2) { valid = false; err = err ? err + "<br>Melebihi batas hari bulan" : "Melebihi batas hari bulan"; }
+                if(e1 || e2) { valid = false; err = err ? err + "<br>Melampaui batas hari bulan" : "Melampaui batas hari bulan"; }
 
                 parts.push({ l: '7', v: head, d: 'Indikator' });
                 parts.push({ l: 's<sub>10</sub>s<sub>10</sub>', v: group.substring(1,3), d: 'Jml hari Salju > 10.0 cm', e: e1 });
                 parts.push({ l: 's<sub>50</sub>s<sub>50</sub>', v: group.substring(3,5), d: 'Jml hari Salju > 50 cm', e: e2 });
             }
             else if (sectionId === 3 && head === '8') {
-                if (group.length !== 7) { valid = false; err = "Harus 7 digit"; }
-                parts.push({ l: '8', v: head, d: 'Indikator' });
-                parts.push({ l: 'f<sub>10</sub>f<sub>10</sub>', v: group.substring(1,3), d: 'Jml hari angin maks ≥ 10 m/s' });
-                parts.push({ l: 'f<sub>20</sub>f<sub>20</sub>', v: group.substring(3,5), d: 'Jml hari angin maks ≥ 20 m/s' });
-                parts.push({ l: 'f<sub>30</sub>f<sub>30</sub>', v: group.substring(5,7), d: 'Jml hari angin maks ≥ 30 m/s' });
+                valid = false; err = "Kelompok 8 dilarang keras di Seksi 3";
+                parts.push({ l: '8', v: head, d: 'Indikator', e: true });
+                parts.push({ l: 'f<sub>10</sub>f<sub>10</sub>f<sub>20</sub>', v: group.substring(1), d: 'Kelompok Ilegal', e: true });
             }
             else if (sectionId === 3 && head === '9') {
                 if (group.length !== 7) { valid = false; err = "Harus 7 digit"; }
@@ -723,7 +812,6 @@
                 let dayEv = parseInt(group.substring(5,7), 10);
                 if(dayEv > 50) dayEv -= 50;
                 let dayErr = (!isNaN(dayEv) && (dayEv > maxDays || dayEv === 0));
-                
                 if (snErr || dayErr) { valid = false; err = err ? err + "<br>Tanda suhu/Tanggal tidak sah" : "Tanda suhu/Tanggal tidak sah"; }
 
                 parts.push({ l: '0', v: head, d: 'Indikator' });
@@ -738,7 +826,6 @@
                 let dayEv = parseInt(group.substring(5,7), 10);
                 if(dayEv > 50) dayEv -= 50;
                 let dayErr = (!isNaN(dayEv) && (dayEv > maxDays || dayEv === 0));
-
                 if (snErr || dayErr) { valid = false; err = err ? err + "<br>Tanda suhu/Tanggal tidak sah" : "Tanda suhu/Tanggal tidak sah"; }
 
                 parts.push({ l: '1', v: head, d: 'Indikator' });
@@ -753,7 +840,6 @@
                 let dayEv = parseInt(group.substring(5,7), 10);
                 if(dayEv > 50) dayEv -= 50;
                 let dayErr = (!isNaN(dayEv) && (dayEv > maxDays || dayEv === 0));
-
                 if (snErr || dayErr) { valid = false; err = err ? err + "<br>Tanda suhu/Tanggal tidak sah" : "Tanda suhu/Tanggal tidak sah"; }
 
                 parts.push({ l: '2', v: head, d: 'Indikator' });
@@ -768,7 +854,6 @@
                 let dayEv = parseInt(group.substring(5,7), 10);
                 if(dayEv > 50) dayEv -= 50;
                 let dayErr = (!isNaN(dayEv) && (dayEv > maxDays || dayEv === 0));
-
                 if (snErr || dayErr) { valid = false; err = err ? err + "<br>Tanda suhu/Tanggal tidak sah" : "Tanda suhu/Tanggal tidak sah"; }
 
                 parts.push({ l: '3', v: head, d: 'Indikator' });
@@ -806,11 +891,11 @@
                 parts.push({ l: 'D<sub>gr</sub>D<sub>gr</sub>', v: group.substring(3,5), d: 'Jumlah hari hujan es' });
             }
             else if (sectionId === 4 && head === '7') {
-                if (group.length !== 6) { valid = false; err = "Harus 6 digit"; }
+                if (group.length !== 5 && group.length !== 6) { valid = false; err = "Wajib 5 digit (Stage 4 BMKG) / 6 digit WMO"; }
                 parts.push({ l: '7', v: head, d: 'Indikator' });
                 parts.push({ l: 'i<sub>y</sub>', v: group.substring(1,2), d: 'Pengenal data suhu maks/min' });
                 parts.push({ l: 'G<sub>x</sub>G<sub>x</sub>', v: group.substring(2,4), d: 'Waktu baca suhu maks (UTC)' });
-                parts.push({ l: 'G<sub>n</sub>G<sub>n</sub>', v: group.substring(4,6), d: 'Waktu baca suhu min (UTC)' });
+                if(group.length === 6) parts.push({ l: 'G<sub>n</sub>G<sub>n</sub>', v: group.substring(4,6), d: 'Waktu baca suhu min (UTC)' });
             }
             else {
                 parts.push({ l: 'Ind', v: head, d: 'Indikator' });
@@ -886,28 +971,28 @@
 
         function updateSummary(isValid, hasEndChar, hasHeader, total, allErrors = []) {
             const ind = document.getElementById('statusIndicator');
-            const finalValid = isValid && hasEndChar && hasHeader;
+            const finalValid = isValid && hasEndChar && hasHeader && (allErrors.length === 0);
 
             if (finalValid) {
                 ind.className = "flex items-center gap-3 p-3 rounded-lg mb-4 bg-green-50 border border-green-200 text-green-700 shadow-sm";
-                ind.innerHTML = `<i class="fa-solid fa-circle-check text-2xl"></i><div><p class="font-bold text-sm">Validasi Lolos</p><p class="text-xs opacity-90">Sandi sesuai dengan aturan WMO-BMKG CLIMAT.</p></div>`;
+                ind.innerHTML = `<i class="fa-solid fa-circle-check text-2xl"></i><div><p class="font-bold text-sm">Validasi Lolos</p><p class="text-xs opacity-90">Sandi sesuai dengan aturan WMO & Forensik BMKG.</p></div>`;
             } else {
                 ind.className = "flex items-center gap-3 p-3 rounded-lg mb-4 bg-red-50 border border-red-200 text-red-700 shadow-sm";
-                ind.innerHTML = `<i class="fa-solid fa-triangle-exclamation text-2xl"></i><div><p class="font-bold text-sm">Ditemukan Kesalahan</p><p class="text-xs opacity-90">Periksa rincian kelompok atau struktur di bawah.</p></div>`;
+                ind.innerHTML = `<i class="fa-solid fa-triangle-exclamation text-2xl"></i><div><p class="font-bold text-sm">Ditemukan Kesalahan</p><p class="text-xs opacity-90">Periksa rincian forensik atau kotak berwarna merah.</p></div>`;
             }
 
             document.getElementById('sumTotalGroups').innerText = total;
             document.getElementById('sumHeader').innerText = hasHeader ? "Sesuai" : "Tidak Sesuai";
             document.getElementById('sumHeader').className = hasHeader ? "font-bold text-green-600" : "font-bold text-red-600";
             
-            let dupText = "Aman (Sesuai Regulasi)";
-            let dupClass = "font-bold text-green-600";
+            let bmkgText = "Aman (100% Sesuai Regulasi)";
+            let bmkgClass = "font-bold text-green-600";
             if(allErrors.length > 0) {
-                dupText = allErrors.join(" | ");
-                dupClass = "font-bold text-red-600 text-xs";
+                bmkgText = allErrors.join(" | ");
+                bmkgClass = "font-bold text-red-600 text-xs";
             }
-            document.getElementById('sumDuplicate').innerText = dupText;
-            document.getElementById('sumDuplicate').className = dupClass;
+            document.getElementById('sumBMKG').innerText = bmkgText;
+            document.getElementById('sumBMKG').className = bmkgClass;
             
             document.getElementById('sumEndChar').innerText = hasEndChar ? "Ditemukan (=)" : "Hilang";
             document.getElementById('sumEndChar').className = hasEndChar ? "font-bold text-green-600" : "font-bold text-red-600";
