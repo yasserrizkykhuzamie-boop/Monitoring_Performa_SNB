@@ -1,0 +1,917 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Validator Sandi CLIMAT</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+    <style>
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        .code-group { font-family: 'Courier New', Courier, monospace; }
+        
+        .batch-table-container { overflow-x: auto; max-height: 500px; }
+        .batch-table th { position: sticky; top: 0; background-color: #f8fafc; z-index: 10; }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans min-h-screen flex flex-col">
+
+    <nav class="bg-blue-700 text-white shadow-md">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-16">
+                <div class="flex items-center gap-3">
+                    <i class="fa-solid fa-cloud-sun-rain text-2xl"></i>
+                    <span class="font-bold text-xl tracking-wide">Validator CLIMAT</span>
+                </div>
+                <div>
+                    <span class="text-sm bg-blue-800 px-3 py-1 rounded-full border border-blue-600">v2.4 - Full BMKG Rules</span>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <main class="flex-grow w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        
+        <div class="mb-6 flex justify-between items-end">
+            <div>
+                <h1 class="text-2xl font-bold text-slate-900">Analisis & Validasi Sandi CLIMAT</h1>
+                <p class="text-slate-600">Mendukung input satu laporan maupun massal (batch). Diperkuat aturan ketat WMO & BMKG Indonesia.</p>
+            </div>
+            <button id="btnDownloadExcel" onclick="downloadExcelReport()" class="hidden bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-bold shadow transition-colors flex items-center gap-2">
+                <i class="fa-solid fa-file-excel"></i> Download Laporan Excel
+            </button>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            
+            <div class="lg:col-span-4 flex flex-col gap-4">
+                <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+                    <div class="flex justify-between items-center mb-3">
+                        <label for="codeInput" class="block text-sm font-bold text-slate-700">Input Sandi</label>
+                        <button onclick="loadExample()" class="text-[11px] text-blue-600 hover:text-blue-800 bg-blue-50 px-2 py-1 rounded font-bold">Contoh 1 Laporan</button>
+                        <button onclick="loadBatchExample()" class="text-[11px] text-purple-600 hover:text-purple-800 bg-purple-50 px-2 py-1 rounded font-bold">Contoh Batch</button>
+                    </div>
+                    
+                    <textarea id="codeInput" rows="12" 
+                        class="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono text-sm resize-y"
+                        placeholder="Masukkan sandi di sini... Bisa paste banyak laporan (pastikan diawali dengan CLIMAT dan diakhiri dengan =)."></textarea>
+                    
+                    <div class="mt-4 flex gap-2">
+                        <button onclick="clearInput()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm font-medium transition-colors w-1/3">
+                            <i class="fa-solid fa-eraser mr-1"></i> Bersihkan
+                        </button>
+                        <button onclick="processInputRouter()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors shadow-sm w-2/3 flex justify-center items-center gap-2">
+                            <i class="fa-solid fa-microchip"></i> Proses Validasi
+                        </button>
+                    </div>
+                </div>
+
+                <div id="summaryCard" class="bg-white rounded-xl shadow-sm border border-slate-200 p-5 hidden">
+                    <h3 class="text-sm font-bold text-slate-700 mb-3 border-b pb-2">Status Validasi (Single Mode)</h3>
+                    <div id="statusIndicator" class="flex items-center gap-3 p-3 rounded-lg mb-3"></div>
+                    <ul class="text-sm space-y-2 text-slate-600">
+                        <li class="flex justify-between border-b border-slate-100 pb-1"><span>Format Header:</span> <span id="sumHeader" class="font-bold text-slate-900">-</span></li>
+                        <li class="flex justify-between border-b border-slate-100 pb-1"><span>Total Grup Data:</span> <span id="sumTotalGroups" class="font-bold text-slate-900">-</span></li>
+                        <li class="flex justify-between border-b border-slate-100 pb-1"><span>Struktur Kelompok:</span> <span id="sumDuplicate" class="font-bold text-slate-900">-</span></li>
+                        <li class="flex justify-between"><span>Karakter Akhir (=):</span> <span id="sumEndChar" class="font-bold text-slate-900">-</span></li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="lg:col-span-8">
+                <div class="bg-white rounded-xl shadow-sm border border-slate-200 min-h-full flex flex-col">
+                    <div class="p-5 border-b border-slate-100 bg-slate-50/50 rounded-t-xl flex justify-between items-center">
+                        <h2 id="resultTitle" class="text-lg font-bold text-slate-800">Struktur & Detail Kelompok</h2>
+                        <span id="resultBadge" class="text-xs font-medium bg-blue-100 text-blue-700 border border-blue-200 px-2 py-1 rounded">Visualisasi Sandi</span>
+                    </div>
+                    
+                    <div id="resultContainer" class="p-5 flex flex-col gap-5 bg-slate-50/50 flex-grow">
+                        <div id="emptyState" class="h-64 flex flex-col items-center justify-center text-slate-400">
+                            <i class="fa-solid fa-magnifying-glass-chart text-4xl mb-3 text-slate-300"></i>
+                            <p>Belum ada data yang diproses.</p>
+                            <p class="text-sm">Masukkan sandi dan klik "Proses Validasi".</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+        </div>
+    </main>
+
+    <script>
+        let batchReports = []; 
+        let globalDuplicateError = false; 
+
+        // Kalender hari dalam bulan standar (termasuk toleransi kabisat Feb=29)
+        const daysInMonth = { 1: 31, 2: 29, 3: 31, 4: 30, 5: 31, 6: 30, 7: 31, 8: 31, 9: 30, 10: 31, 11: 30, 12: 31 };
+
+        // Contoh Tunggal lengkap dengan grup 8 & 9 valid sesuai regulasi BMKG
+        const exampleDataSingle = "CLIMAT 07020 96749\n111 10095 21013 30276015 69999412 7150075 8000000 9000000\n222 06190 19982 21013 30273010 403210224 5363 6010415 7150 8030000 9000000\n333 03115 10200 20000 32515 41005 50100 60000 70000 8120100 9040812\n444 0028217 1026619 2034230 3023215 4056425 5425215 61500 711200\n=";
+        
+        const exampleDataBatch = `CLIMAT 07020 96749\n111 10095 21013 30276015 69999412 8000000 9000000\n=\n\nCLIMAT 07020 96001\n111 10099 21010 30280010 68888415 8000000 9000000\n=\n\nCLIMAT 07020 97012\n111 10090 21010 21011 30280010 68888415 8000000 9000000\n=`;
+
+        function loadExample() { document.getElementById('codeInput').value = exampleDataSingle; }
+        function loadBatchExample() { document.getElementById('codeInput').value = exampleDataBatch; }
+
+        function clearInput() {
+            document.getElementById('codeInput').value = '';
+            document.getElementById('emptyState').style.display = 'flex';
+            document.getElementById('summaryCard').classList.add('hidden');
+            document.getElementById('btnDownloadExcel').classList.add('hidden');
+            document.getElementById('resultTitle').innerText = "Struktur & Detail Kelompok";
+            document.getElementById('resultBadge').innerText = "Visualisasi Sandi";
+            
+            const container = document.getElementById('resultContainer');
+            Array.from(container.children).forEach(child => {
+                if(child.id !== 'emptyState') child.remove();
+            });
+            batchReports = [];
+        }
+
+        function processInputRouter() {
+            const rawInput = document.getElementById('codeInput').value.trim();
+            if (!rawInput) { alert("Silakan masukkan teks sandi terlebih dahulu!"); return; }
+
+            const climatCount = (rawInput.match(/CLIMAT/g) || []).length;
+            if (climatCount > 1) {
+                processBatchMode(rawInput);
+            } else {
+                processCode();
+            }
+        }
+
+        function checkDuplicates(parsedData) {
+            let dupErrs = [];
+            for(let sec = 1; sec <= 4; sec++) {
+                let heads = parsedData[sec].map(grp => grp.charAt(0));
+                let duplicates = heads.filter((item, index) => heads.indexOf(item) !== index);
+                
+                if(duplicates.length > 0) {
+                    let uniqueDups = [...new Set(duplicates)];
+                    uniqueDups.forEach(d => {
+                        dupErrs.push(`Seksi ${sec} memiliki duplikasi Kelompok ${d}`);
+                    });
+                }
+            }
+            return dupErrs;
+        }
+
+        // FUNGSI CEK ATURAN METEOROLOGIS BMKG (Dipanggil di Single & Batch Mode)
+        function checkBMKGRules(parsedData, maxDays) {
+            let bmkgErrs = [];
+            let s1 = parsedData[1] || [];
+            let s3 = parsedData[3] || [];
+            let s4 = parsedData[4] || [];
+
+            // 1. Audit Kehadiran Wajib Kelompok Cacat Hari (Group 8 & 9 di Seksi 1)
+            let s1_heads = s1.map(g => g.charAt(0));
+            if(s1.length > 0) {
+                if(!s1_heads.includes('8') || !s1_heads.includes('9')) {
+                    bmkgErrs.push("BMKG [Seksi 1]: Kelompok 8 & 9 (rekap hari hilang) wajib hadir meskipun bernilai 0.");
+                }
+            }
+
+            // 2. Toleransi Hari Hilang > 10 Hari (Seksi 1)
+            let g8 = s1.find(g => g.charAt(0) === '8' && g.length === 7);
+            if (g8) {
+                let m_P = parseInt(g8.substring(1, 3), 10);
+                let m_T = parseInt(g8.substring(3, 5), 10);
+                let g3 = s1.find(g => g.charAt(0) === '3');
+                let g1 = s1.find(g => g.charAt(0) === '1');
+
+                if (m_T > 10 && g3 && !g3.includes("///")) {
+                    bmkgErrs.push(`BMKG Kontradiksi [Seksi 1 Klp 3]: Hari hilang suhu (${m_T} hari) > 10 hari, wajib disandikan garis miring (///).`);
+                }
+                if (m_P > 10 && g1 && !g1.includes("////")) {
+                    bmkgErrs.push(`BMKG Kontradiksi [Seksi 1 Klp 1]: Hari hilang tekanan (${m_P} hari) > 10 hari, wajib disandikan garis miring (////).`);
+                }
+            }
+
+            // 3. Ambang Batas Hari Seksi 3 & Kontradiksi Fisis Suhu
+            s3.forEach(token => {
+                if (token.length === 5) {
+                    let val1 = parseInt(token.substring(1, 3), 10);
+                    let val2 = parseInt(token.substring(3, 5), 10);
+
+                    if (!isNaN(val1) && val1 > maxDays) bmkgErrs.push(`BMKG Batas Hari [Seksi 3 Klp ${token}]: Nilai ${val1} hari melampaui usia bulan (${maxDays} hari).`);
+                    if (!isNaN(val2) && val2 > maxDays) bmkgErrs.push(`BMKG Batas Hari [Seksi 3 Klp ${token}]: Nilai ${val2} hari melampaui usia bulan (${maxDays} hari).`);
+                    
+                    if (token.charAt(0) === '0' && val2 > val1) {
+                        bmkgErrs.push(`BMKG Fisis [Seksi 3 Klp 0]: Hari suhu >= 30°C (${val2}) tidak boleh melebihi suhu >= 25°C (${val1}).`);
+                    }
+                }
+            });
+
+            // 4. Penanggalan Ekstrem Seksi 4
+            s4.forEach(token => {
+                let head = token.charAt(0);
+                if (["0", "1", "2", "3", "4", "5"].includes(head) && token.length === 7) {
+                    let dayOfEvent = parseInt(token.substring(5, 7), 10);
+                    if (!isNaN(dayOfEvent)) {
+                        if (dayOfEvent > 50) dayOfEvent -= 50;
+                        if (dayOfEvent > maxDays || dayOfEvent === 0) {
+                            bmkgErrs.push(`BMKG Penanggalan [Seksi 4 Klp ${token}]: Tanggal kejadian (${dayOfEvent}) tidak ada dalam kalender bulan berjalan (${maxDays} hari).`);
+                        }
+                    }
+                }
+            });
+
+            return bmkgErrs;
+        }
+
+        function processBatchMode(rawText) {
+            document.getElementById('emptyState').style.display = 'none';
+            document.getElementById('summaryCard').classList.add('hidden'); 
+            const container = document.getElementById('resultContainer');
+            Array.from(container.children).forEach(child => { if(child.id !== 'emptyState') child.remove(); });
+            
+            document.getElementById('resultTitle').innerText = "Rekapitulasi Validasi Laporan (Batch)";
+            document.getElementById('resultBadge').innerText = "Mode Tabel";
+            document.getElementById('btnDownloadExcel').classList.remove('hidden'); 
+
+            batchReports = [];
+            
+            let reports = rawText.split(/(?=CLIMAT)/).filter(txt => txt.trim().length > 10);
+
+            let tableHTML = `
+            <div class="batch-table-container rounded-lg border border-slate-200">
+                <table class="w-full text-left border-collapse batch-table text-sm">
+                    <thead>
+                        <tr class="bg-slate-100 border-b border-slate-300 text-slate-700">
+                            <th class="p-3 font-bold text-center border-r border-slate-200">No</th>
+                            <th class="p-3 font-bold border-r border-slate-200">Bulan/Tahun</th>
+                            <th class="p-3 font-bold border-r border-slate-200">ID Stasiun</th>
+                            <th class="p-3 font-bold text-center border-r border-slate-200">Status</th>
+                            <th class="p-3 font-bold">Keterangan / Pesan Error</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-200 bg-white">
+            `;
+
+            reports.forEach((reportString, idx) => {
+                globalIsValid = true;
+                globalDuplicateError = false;
+                let errorMessages = [];
+
+                let cleanText = reportString.replace(/\s+/g, ' ');
+                let tokens = cleanText.split(' ');
+                let parsedData = { 0: [], 1: [], 2: [], 3: [], 4: [] };
+                let currentSection = -1;
+                let hasEndChar = false;
+
+                for (let i = 0; i < tokens.length; i++) {
+                    let token = tokens[i];
+                    if (token === "=") { hasEndChar = true; continue; }
+                    if (token === "CLIMAT") { currentSection = 0; parsedData[0].push(token); }
+                    else if (["111", "222", "333", "444"].includes(token)) { currentSection = parseInt(token.charAt(0)); }
+                    else { if (currentSection !== -1) parsedData[currentSection].push(token); }
+                }
+
+                let dupErrs = checkDuplicates(parsedData);
+                if(dupErrs.length > 0) {
+                    globalIsValid = false;
+                    errorMessages = errorMessages.concat(dupErrs);
+                }
+
+                let stDate = "-", stId = "-";
+                let maxDays = 31;
+                if (parsedData[0].length >= 3) {
+                    stDate = parsedData[0][1];
+                    stId = parsedData[0][2];
+                    if(stDate && stDate.length === 5 && !isNaN(stDate)) {
+                        let mm = parseInt(stDate.substring(0, 2), 10);
+                        if(mm > 50) mm -= 50; // Aturan CLIMAT TEMP knot
+                        maxDays = daysInMonth[mm] || 31;
+                    }
+                }
+
+                // Cek Aturan Fisis BMKG
+                let bmkgErrs = checkBMKGRules(parsedData, maxDays);
+                if(bmkgErrs.length > 0) {
+                    globalIsValid = false;
+                    errorMessages = errorMessages.concat(bmkgErrs);
+                }
+
+                if (parsedData[0].length > 0) {
+                    let isClimat = parsedData[0][0] === 'CLIMAT';
+                    if(!isClimat) { globalIsValid = false; errorMessages.push("Tidak diawali 'CLIMAT'"); }
+                    let mmjjj = parsedData[0][1] || "";
+                    if (!(mmjjj.length === 5 && !isNaN(mmjjj))) { globalIsValid = false; errorMessages.push("Format Bulan/Tahun (MMJJJ) salah"); }
+                    let stasiun = parsedData[0][2] || "";
+                    if (!(stasiun.length === 5 && !isNaN(stasiun))) { globalIsValid = false; errorMessages.push("ID Stasiun salah"); }
+                } else {
+                    globalIsValid = false; errorMessages.push("Header Seksi 0 tidak lengkap");
+                }
+                
+                if (!hasEndChar) { globalIsValid = false; errorMessages.push("Karakter akhir (=) hilang"); }
+
+                for(let sec = 1; sec <= 4; sec++){
+                    if(parsedData[sec].length > 0) {
+                        let heads = parsedData[sec].map(g => g.charAt(0));
+                        let dupHeads = [...new Set(heads.filter((item, index) => heads.indexOf(item) !== index))];
+
+                        parsedData[sec].forEach(grp => {
+                            let isDup = dupHeads.includes(grp.charAt(0));
+                            let resultHTML = parseGroup(sec, grp, isDup, maxDays); 
+                            if(resultHTML.includes('text-red-600 bg-red-50')){
+                                let match = resultHTML.match(/<div class="text-\[10px\].*?>(.*?)<\/div>/);
+                                if(match && match[1]) {
+                                    let cleanMsg = match[1].replace(/<br>/g, " | ");
+                                    errorMessages.push(`Seksi ${sec} Klp ${grp}: ${cleanMsg}`);
+                                }
+                            }
+                        });
+                    }
+                }
+
+                let uniqueErrors = [...new Set(errorMessages)];
+
+                let reportObj = {
+                    no: idx + 1,
+                    bulan: stDate,
+                    id: stId,
+                    status: globalIsValid ? "VALID" : "ERROR",
+                    pesan: globalIsValid ? "Format struktur & fisis sudah sesuai WMO-BMKG." : uniqueErrors.join(" | ")
+                };
+                batchReports.push(reportObj);
+
+                let badgeClass = globalIsValid ? "bg-green-100 text-green-700 border-green-200" : "bg-red-100 text-red-700 border-red-200";
+                let textClass = globalIsValid ? "text-slate-500" : "text-red-600 font-medium";
+                let iconClass = globalIsValid ? "fa-check text-green-600" : "fa-xmark text-red-600";
+
+                tableHTML += `
+                    <tr class="hover:bg-slate-50">
+                        <td class="p-3 text-center border-r border-slate-200 text-slate-500">${idx + 1}</td>
+                        <td class="p-3 font-mono border-r border-slate-200">${stDate}</td>
+                        <td class="p-3 font-mono font-bold text-slate-800 border-r border-slate-200">${stId}</td>
+                        <td class="p-3 text-center border-r border-slate-200">
+                            <span class="px-2 py-1 border rounded text-xs font-bold ${badgeClass}"><i class="fa-solid ${iconClass} mr-1"></i>${reportObj.status}</span>
+                        </td>
+                        <td class="p-3 text-xs ${textClass}">${reportObj.pesan}</td>
+                    </tr>
+                `;
+            });
+
+            tableHTML += `</tbody></table></div>`;
+            container.innerHTML = tableHTML;
+        }
+
+        function downloadExcelReport() {
+            if (batchReports.length === 0) { alert("Tidak ada data laporan untuk diekspor!"); return; }
+            const excelData = [ ["No", "Bulan/Tahun", "ID Stasiun", "Status Validasi", "Keterangan Error"] ];
+            batchReports.forEach(row => { excelData.push([row.no, row.bulan, row.id, row.status, row.pesan]); });
+            const worksheet = XLSX.utils.aoa_to_sheet(excelData);
+            worksheet['!cols'] = [ { wch: 5 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 70 } ];
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, "Laporan Validasi CLIMAT");
+            let dateStr = new Date().toISOString().slice(0,10);
+            XLSX.writeFile(workbook, `Rekap_Validasi_CLIMAT_${dateStr}.xlsx`);
+        }
+
+        function processCode() {
+            const rawInput = document.getElementById('codeInput').value.trim();
+            document.getElementById('emptyState').style.display = 'none';
+            document.getElementById('btnDownloadExcel').classList.add('hidden'); 
+            document.getElementById('resultTitle').innerText = "Struktur & Detail Kelompok";
+            document.getElementById('resultBadge').innerText = "Visualisasi Sandi";
+
+            const container = document.getElementById('resultContainer');
+            Array.from(container.children).forEach(child => { if(child.id !== 'emptyState') child.remove(); });
+            document.getElementById('summaryCard').classList.remove('hidden');
+
+            const cleanText = rawInput.replace(/\s+/g, ' ');
+            const tokens = cleanText.split(' ');
+
+            const parsedData = { 0: [], 1: [], 2: [], 3: [], 4: [] };
+            let currentSection = -1;
+            let hasEndChar = false;
+            globalIsValid = true; 
+            globalDuplicateError = false;
+            let totalGroups = 0;
+
+            for (let i = 0; i < tokens.length; i++) {
+                let token = tokens[i];
+                if (token === "=") { hasEndChar = true; continue; }
+
+                if (token === "CLIMAT") {
+                    currentSection = 0; parsedData[0].push(token);
+                } else if (["111", "222", "333", "444"].includes(token)) {
+                    currentSection = parseInt(token.charAt(0));
+                } else {
+                    if (currentSection !== -1) {
+                        parsedData[currentSection].push(token);
+                        if(currentSection !== 0) totalGroups++;
+                    }
+                }
+            }
+
+            let maxDays = 31;
+            if (parsedData[0].length >= 2) {
+                let stDate = parsedData[0][1];
+                if(stDate && stDate.length === 5 && !isNaN(stDate)) {
+                    let mm = parseInt(stDate.substring(0, 2), 10);
+                    if(mm > 50) mm -= 50;
+                    maxDays = daysInMonth[mm] || 31;
+                }
+            }
+
+            let dupErrs = checkDuplicates(parsedData);
+            if(dupErrs.length > 0) {
+                globalIsValid = false;
+                globalDuplicateError = true;
+            }
+
+            let bmkgErrs = checkBMKGRules(parsedData, maxDays);
+            if(bmkgErrs.length > 0) {
+                globalIsValid = false;
+            }
+
+            let allErrors = dupErrs.concat(bmkgErrs);
+
+            if (parsedData[0].length > 0) {
+                container.appendChild(createSection0Card(parsedData[0]));
+            } else {
+                globalIsValid = false;
+            }
+
+            const secTitles = { 1: "SEKSI 1 (Data Bulanan)", 2: "SEKSI 2 (Data Normal)", 3: "SEKSI 3 (Jumlah Hari)", 4: "SEKSI 4 (Data Ekstrem & Kejadian)" };
+            for (let i = 1; i <= 4; i++) {
+                if (parsedData[i].length > 0) {
+                    let heads = parsedData[i].map(g => g.charAt(0));
+                    let dupHeads = [...new Set(heads.filter((item, index) => heads.indexOf(item) !== index))];
+                    
+                    container.appendChild(createDataSectionCard(i, secTitles[i], parsedData[i], dupHeads, maxDays));
+                }
+            }
+
+            updateSummary(globalIsValid, hasEndChar, parsedData[0].length >= 3, totalGroups, allErrors);
+        }
+
+        function validateSection0(groups) {
+            let resHTML = '';
+            let isClimat = groups[0] === 'CLIMAT';
+            if(!isClimat) globalIsValid = false;
+            resHTML += buildSegment("ID", groups[0] || "?", isClimat ? "" : "Harus kata CLIMAT");
+
+            let mmjjj = groups[1] || "";
+            let isValidDate = false;
+            let dateErr = "Format MMJJJ salah";
+            if (mmjjj.length === 5 && !isNaN(mmjjj)) {
+                let mm = parseInt(mmjjj.substring(0,2));
+                if (mm >= 1 && mm <= 12) { isValidDate = true; dateErr = ""; } 
+                else { dateErr = "Bulan (MM) harus 01-12"; }
+            }
+            if(!isValidDate) globalIsValid = false;
+            resHTML += buildSegment("MMJJJ", mmjjj, dateErr);
+
+            let stasiun = groups[2] || "";
+            let isValidSt = stasiun.length === 5 && !isNaN(stasiun);
+            if(!isValidSt) globalIsValid = false;
+            resHTML += buildSegment("IIiii", stasiun, isValidSt ? "" : "Harus 5 digit angka");
+
+            return resHTML;
+        }
+
+        function parseGroup(sectionId, group, isDuplicate = false, maxDays = 31) {
+            let head = group.charAt(0);
+            let valid = true;
+            let err = '';
+            let parts = [];
+
+            // ========================= ATURAN SEKSI 1 =========================
+            if (sectionId === 1 && head === '1') {
+                if (group.length !== 5) { valid = false; err = "Harus 5 digit"; }
+                parts.push({ l: '1', v: head, d: 'Indikator' });
+                parts.push({ l: 'P<sub>0</sub>P<sub>0</sub>P<sub>0</sub>P<sub>0</sub>', v: group.substring(1), d: 'Tekanan Permukaan Stasiun' });
+            } 
+            else if (sectionId === 1 && head === '2') {
+                if (group.length !== 5) { valid = false; err = "Harus 5 digit"; }
+                parts.push({ l: '2', v: head, d: 'Indikator' });
+                parts.push({ l: 'PPPP', v: group.substring(1), d: 'Tekanan Permukaan Laut' });
+            }
+            else if (sectionId === 1 && head === '3') {
+                if (group.length !== 8) { valid = false; err = "Harus 8 digit"; }
+                let sn = group.charAt(1) || '';
+                let snErr = (sn !== '0' && sn !== '1');
+                if (snErr) { valid = false; err = "sn harus 0 atau 1"; }
+                parts.push({ l: '3', v: head, d: 'Indikator' });
+                parts.push({ l: 's<sub>n</sub>', v: sn, d: sn==='0'?'Positif':'Negatif', e: snErr });
+                parts.push({ l: 'TTT', v: group.substring(2,5), d: 'Rata-rata Suhu' });
+                parts.push({ l: 's<sub>t</sub>s<sub>t</sub>s<sub>t</sub>', v: group.substring(5,8), d: 'Standar Deviasi' });
+            }
+            else if (sectionId === 1 && head === '6') {
+                if (group.length !== 8) { valid = false; err = "Harus 8 digit"; }
+                parts.push({ l: '6', v: head, d: 'Indikator' });
+                parts.push({ l: 'R<sub>1</sub>R<sub>1</sub>R<sub>1</sub>R<sub>1</sub>', v: group.substring(1,5), d: 'Jumlah Endapan (Curah Hujan)' });
+                parts.push({ l: 'R<sub>d</sub>', v: group.substring(5,6), d: 'Kuantil Curah Hujan' });
+                parts.push({ l: 'n<sub>r</sub>n<sub>r</sub>', v: group.substring(6,8), d: 'Jumlah Hari Hujan' });
+            }
+            else if (sectionId === 1 && head === '7') {
+                if (group.length !== 7) { valid = false; err = "Harus 7 digit"; }
+                parts.push({ l: '7', v: head, d: 'Indikator' });
+                parts.push({ l: 'S<sub>1</sub>S<sub>1</sub>S<sub>1</sub>', v: group.substring(1,4), d: 'Lama Penyinaran (Jam Penuh)' });
+                parts.push({ l: 'p<sub>s</sub>p<sub>s</sub>p<sub>s</sub>', v: group.substring(4,7), d: 'Persentase thd Normal (%)' });
+            }
+            else if (sectionId === 1 && head === '8') {
+                if (group.length !== 7) { valid = false; err = "Harus 7 digit"; }
+                parts.push({ l: '8', v: head, d: 'Indikator' });
+                parts.push({ l: 'm<sub>p</sub>m<sub>p</sub>', v: group.substring(1,3), d: 'Hari tanpa data tekanan' });
+                parts.push({ l: 'm<sub>T</sub>m<sub>T</sub>', v: group.substring(3,5), d: 'Hari tanpa data suhu' });
+                parts.push({ l: 'm<sub>Tx</sub>', v: group.substring(5,6), d: 'Hari tanpa suhu maks' });
+                parts.push({ l: 'm<sub>Tn</sub>', v: group.substring(6,7), d: 'Hari tanpa suhu min' });
+            }
+            else if (sectionId === 1 && head === '9') {
+                if (group.length !== 7) { valid = false; err = "Harus 7 digit"; }
+                parts.push({ l: '9', v: head, d: 'Indikator' });
+                parts.push({ l: 'm<sub>e</sub>m<sub>e</sub>', v: group.substring(1,3), d: 'Hari tanpa tekanan uap air' });
+                parts.push({ l: 'm<sub>R</sub>m<sub>R</sub>', v: group.substring(3,5), d: 'Hari tanpa curah hujan' });
+                parts.push({ l: 'm<sub>S</sub>m<sub>S</sub>', v: group.substring(5,7), d: 'Hari tanpa penyinaran' });
+            }
+
+            // ========================= ATURAN SEKSI 2 =========================
+            else if (sectionId === 2 && head === '0') {
+                if (group.length !== 5) { valid = false; err = "Harus 5 digit"; }
+                parts.push({ l: '0', v: head, d: 'Indikator' });
+                parts.push({ l: 'Y<sub>b</sub>Y<sub>b</sub>', v: group.substring(1,3), d: 'Tahun Awal Periode Normal' });
+                parts.push({ l: 'Y<sub>c</sub>Y<sub>c</sub>', v: group.substring(3,5), d: 'Tahun Akhir Periode Normal' });
+            }
+            else if (sectionId === 2 && head === '1') {
+                if (group.length !== 5) { valid = false; err = "Harus 5 digit"; }
+                parts.push({ l: '1', v: head, d: 'Indikator' });
+                parts.push({ l: 'P<sub>0</sub>P<sub>0</sub>P<sub>0</sub>P<sub>0</sub>', v: group.substring(1), d: 'Nilai Normal Tekanan Stasiun' });
+            }
+            else if (sectionId === 2 && head === '2') {
+                if (group.length !== 5) { valid = false; err = "Harus 5 digit"; }
+                parts.push({ l: '2', v: head, d: 'Indikator' });
+                parts.push({ l: 'PPPP', v: group.substring(1), d: 'Nilai Normal Tekanan Laut' });
+            }
+            else if (sectionId === 2 && head === '3') {
+                if (group.length !== 8) { valid = false; err = "Harus 8 digit"; }
+                let sn = group.charAt(1) || '';
+                let snErr = (sn !== '0' && sn !== '1');
+                if (snErr) { valid = false; err = "sn harus 0 atau 1"; }
+                parts.push({ l: '3', v: head, d: 'Indikator' });
+                parts.push({ l: 's<sub>n</sub>', v: sn, d: sn==='0'?'Positif':'Negatif', e: snErr });
+                parts.push({ l: 'TTT', v: group.substring(2,5), d: 'Nilai Normal Suhu' });
+                parts.push({ l: 's<sub>t</sub>s<sub>t</sub>s<sub>t</sub>', v: group.substring(5,8), d: 'Standar Deviasi Normal' });
+            }
+            else if (sectionId === 2 && head === '4') {
+                if (group.length !== 9) { valid = false; err = "Harus 9 digit"; }
+                let sn1 = group.charAt(1) || '';
+                let sn2 = group.charAt(5) || '';
+                let sn1Err = (sn1 !== '0' && sn1 !== '1');
+                let sn2Err = (sn2 !== '0' && sn2 !== '1');
+                if (sn1Err || sn2Err) { valid = false; err = "sn harus 0 atau 1"; }
+                parts.push({ l: '4', v: head, d: 'Indikator' });
+                parts.push({ l: 's<sub>n</sub>', v: sn1, d: 'Tanda Suhu Maks', e: sn1Err });
+                parts.push({ l: 'T<sub>x</sub>T<sub>x</sub>T<sub>x</sub>', v: group.substring(2,5), d: 'Nilai Normal Suhu Maksimum' });
+                parts.push({ l: 's<sub>n</sub>', v: sn2, d: 'Tanda Suhu Min', e: sn2Err });
+                parts.push({ l: 'T<sub>n</sub>T<sub>n</sub>T<sub>n</sub>', v: group.substring(6,9), d: 'Nilai Normal Suhu Minimum' });
+            }
+            else if (sectionId === 2 && head === '5') {
+                if (group.length !== 4) { valid = false; err = "Harus 4 digit (5eee)"; }
+                parts.push({ l: '5', v: head, d: 'Indikator' });
+                parts.push({ l: 'eee', v: group.substring(1,4), d: 'Nilai normal uap air bulanan' });
+            }
+            else if (sectionId === 2 && head === '6') {
+                if (group.length !== 7) { valid = false; err = "Harus 7 digit"; }
+                parts.push({ l: '6', v: head, d: 'Indikator' });
+                parts.push({ l: 'R<sub>1</sub>R<sub>1</sub>R<sub>1</sub>R<sub>1</sub>', v: group.substring(1,5), d: 'Nilai normal curah hujan' });
+                parts.push({ l: 'n<sub>r</sub>n<sub>r</sub>', v: group.substring(5,7), d: 'Jumlah rata-rata hari hujan' });
+            }
+            else if (sectionId === 2 && head === '7') {
+                if (group.length !== 4) { valid = false; err = "Harus 4 digit"; }
+                parts.push({ l: '7', v: head, d: 'Indikator' });
+                parts.push({ l: 'S<sub>1</sub>S<sub>1</sub>S<sub>1</sub>', v: group.substring(1,4), d: 'Nilai normal penyinaran' });
+            }
+            else if (sectionId === 2 && head === '8') {
+                if (group.length !== 7) { valid = false; err = "Harus 7 digit"; }
+                parts.push({ l: '8', v: head, d: 'Indikator' });
+                parts.push({ l: 'y<sub>p</sub>y<sub>p</sub>', v: group.substring(1,3), d: 'Jml tahun tanpa tekanan' });
+                parts.push({ l: 'y<sub>T</sub>y<sub>T</sub>', v: group.substring(3,5), d: 'Jml tahun tanpa suhu' });
+                parts.push({ l: 'y<sub>Tx</sub>y<sub>Tx</sub>', v: group.substring(5,7), d: 'Jml tahun tanpa suhu ekstrim' });
+            }
+            else if (sectionId === 2 && head === '9') {
+                if (group.length !== 7) { valid = false; err = "Harus 7 digit"; }
+                parts.push({ l: '9', v: head, d: 'Indikator' });
+                parts.push({ l: 'y<sub>e</sub>y<sub>e</sub>', v: group.substring(1,3), d: 'Jml tahun tanpa uap air' });
+                parts.push({ l: 'y<sub>R</sub>y<sub>R</sub>', v: group.substring(3,5), d: 'Jml tahun tanpa curah hujan' });
+                parts.push({ l: 'y<sub>S</sub>y<sub>S</sub>', v: group.substring(5,7), d: 'Jml tahun tanpa penyinaran' });
+            }
+
+            // ========================= ATURAN SEKSI 3 =========================
+            else if (sectionId === 3 && head === '0') {
+                if (group.length !== 5) { valid = false; err = "Harus 5 digit"; }
+                let v1 = parseInt(group.substring(1,3), 10);
+                let v2 = parseInt(group.substring(3,5), 10);
+                let e1 = (!isNaN(v1) && v1 > maxDays);
+                let e2 = (!isNaN(v2) && (v2 > maxDays || v2 > v1));
+                if(e1 || e2) { valid = false; err = err ? err + "<br>Melebihi hari bulan/Fisis salah" : "Melebihi hari bulan/Fisis salah"; }
+
+                parts.push({ l: '0', v: head, d: 'Indikator' });
+                parts.push({ l: 'T<sub>25</sub>T<sub>25</sub>', v: group.substring(1,3), d: 'Jml hari T.Maks ≥ 25°C', e: e1 });
+                parts.push({ l: 'T<sub>30</sub>T<sub>30</sub>', v: group.substring(3,5), d: 'Jml hari T.Maks ≥ 30°C', e: e2 });
+            }
+            else if (sectionId === 3 && head === '1') {
+                if (group.length !== 5) { valid = false; err = "Harus 5 digit"; }
+                let v1 = parseInt(group.substring(1,3), 10);
+                let v2 = parseInt(group.substring(3,5), 10);
+                let e1 = (!isNaN(v1) && v1 > maxDays);
+                let e2 = (!isNaN(v2) && v2 > maxDays);
+                if(e1 || e2) { valid = false; err = err ? err + "<br>Melebihi batas hari bulan" : "Melebihi batas hari bulan"; }
+
+                parts.push({ l: '1', v: head, d: 'Indikator' });
+                parts.push({ l: 'T<sub>35</sub>T<sub>35</sub>', v: group.substring(1,3), d: 'Jml hari T.Maks ≥ 35°C', e: e1 });
+                parts.push({ l: 'T<sub>40</sub>T<sub>40</sub>', v: group.substring(3,5), d: 'Jml hari T.Maks ≥ 40°C', e: e2 });
+            }
+            else if (sectionId === 3 && head === '2') {
+                if (group.length !== 5) { valid = false; err = "Harus 5 digit"; }
+                let v1 = parseInt(group.substring(1,3), 10);
+                let v2 = parseInt(group.substring(3,5), 10);
+                let e1 = (!isNaN(v1) && v1 > maxDays);
+                let e2 = (!isNaN(v2) && v2 > maxDays);
+                if(e1 || e2) { valid = false; err = err ? err + "<br>Melebihi batas hari bulan" : "Melebihi batas hari bulan"; }
+
+                parts.push({ l: '2', v: head, d: 'Indikator' });
+                parts.push({ l: 'T<sub>n0</sub>T<sub>n0</sub>', v: group.substring(1,3), d: 'Jml hari T.Min < 0°C', e: e1 });
+                parts.push({ l: 'T<sub>x0</sub>T<sub>x0</sub>', v: group.substring(3,5), d: 'Jml hari T.Maks < 0°C', e: e2 });
+            }
+            else if (sectionId === 3 && head === '3') {
+                if (group.length !== 5) { valid = false; err = "Harus 5 digit"; }
+                let v1 = parseInt(group.substring(1,3), 10);
+                let v2 = parseInt(group.substring(3,5), 10);
+                let e1 = (!isNaN(v1) && v1 > maxDays);
+                let e2 = (!isNaN(v2) && v2 > maxDays);
+                if(e1 || e2) { valid = false; err = err ? err + "<br>Melebihi batas hari bulan" : "Melebihi batas hari bulan"; }
+
+                parts.push({ l: '3', v: head, d: 'Indikator' });
+                parts.push({ l: 'R<sub>01</sub>R<sub>01</sub>', v: group.substring(1,3), d: 'Jml hari Hujan ≥ 1.0 mm', e: e1 });
+                parts.push({ l: 'R<sub>05</sub>R<sub>05</sub>', v: group.substring(3,5), d: 'Jml hari Hujan ≥ 5.0 mm', e: e2 });
+            }
+            else if (sectionId === 3 && head === '4') {
+                if (group.length !== 5) { valid = false; err = "Harus 5 digit"; }
+                let v1 = parseInt(group.substring(1,3), 10);
+                let v2 = parseInt(group.substring(3,5), 10);
+                let e1 = (!isNaN(v1) && v1 > maxDays);
+                let e2 = (!isNaN(v2) && v2 > maxDays);
+                if(e1 || e2) { valid = false; err = err ? err + "<br>Melebihi batas hari bulan" : "Melebihi batas hari bulan"; }
+
+                parts.push({ l: '4', v: head, d: 'Indikator' });
+                parts.push({ l: 'R<sub>10</sub>R<sub>10</sub>', v: group.substring(1,3), d: 'Jml hari Hujan ≥ 10.0 mm', e: e1 });
+                parts.push({ l: 'R<sub>50</sub>R<sub>50</sub>', v: group.substring(3,5), d: 'Jml hari Hujan ≥ 50.0 mm', e: e2 });
+            }
+            else if (sectionId === 3 && head === '5') {
+                if (group.length !== 5) { valid = false; err = "Harus 5 digit"; }
+                let v1 = parseInt(group.substring(1,3), 10);
+                let v2 = parseInt(group.substring(3,5), 10);
+                let e1 = (!isNaN(v1) && v1 > maxDays);
+                let e2 = (!isNaN(v2) && v2 > maxDays);
+                if(e1 || e2) { valid = false; err = err ? err + "<br>Melebihi batas hari bulan" : "Melebihi batas hari bulan"; }
+
+                parts.push({ l: '5', v: head, d: 'Indikator' });
+                parts.push({ l: 'R<sub>100</sub>R<sub>100</sub>', v: group.substring(1,3), d: 'Jml hari Hujan ≥ 100.0 mm', e: e1 });
+                parts.push({ l: 'R<sub>150</sub>R<sub>150</sub>', v: group.substring(3,5), d: 'Jml hari Hujan ≥ 150.0 mm', e: e2 });
+            }
+            else if (sectionId === 3 && head === '6') {
+                if (group.length !== 5) { valid = false; err = "Harus 5 digit"; }
+                let v1 = parseInt(group.substring(1,3), 10);
+                let v2 = parseInt(group.substring(3,5), 10);
+                let e1 = (!isNaN(v1) && v1 > maxDays);
+                let e2 = (!isNaN(v2) && v2 > maxDays);
+                if(e1 || e2) { valid = false; err = err ? err + "<br>Melebihi batas hari bulan" : "Melebihi batas hari bulan"; }
+
+                parts.push({ l: '6', v: head, d: 'Indikator' });
+                parts.push({ l: 's<sub>00</sub>s<sub>00</sub>', v: group.substring(1,3), d: 'Jml hari Salju > 0.0 cm', e: e1 });
+                parts.push({ l: 's<sub>01</sub>s<sub>01</sub>', v: group.substring(3,5), d: 'Jml hari Salju > 1.0 cm', e: e2 });
+            }
+            else if (sectionId === 3 && head === '7') {
+                if (group.length !== 5) { valid = false; err = "Harus 5 digit"; }
+                let v1 = parseInt(group.substring(1,3), 10);
+                let v2 = parseInt(group.substring(3,5), 10);
+                let e1 = (!isNaN(v1) && v1 > maxDays);
+                let e2 = (!isNaN(v2) && v2 > maxDays);
+                if(e1 || e2) { valid = false; err = err ? err + "<br>Melebihi batas hari bulan" : "Melebihi batas hari bulan"; }
+
+                parts.push({ l: '7', v: head, d: 'Indikator' });
+                parts.push({ l: 's<sub>10</sub>s<sub>10</sub>', v: group.substring(1,3), d: 'Jml hari Salju > 10.0 cm', e: e1 });
+                parts.push({ l: 's<sub>50</sub>s<sub>50</sub>', v: group.substring(3,5), d: 'Jml hari Salju > 50 cm', e: e2 });
+            }
+            else if (sectionId === 3 && head === '8') {
+                if (group.length !== 7) { valid = false; err = "Harus 7 digit"; }
+                parts.push({ l: '8', v: head, d: 'Indikator' });
+                parts.push({ l: 'f<sub>10</sub>f<sub>10</sub>', v: group.substring(1,3), d: 'Jml hari angin maks ≥ 10 m/s' });
+                parts.push({ l: 'f<sub>20</sub>f<sub>20</sub>', v: group.substring(3,5), d: 'Jml hari angin maks ≥ 20 m/s' });
+                parts.push({ l: 'f<sub>30</sub>f<sub>30</sub>', v: group.substring(5,7), d: 'Jml hari angin maks ≥ 30 m/s' });
+            }
+            else if (sectionId === 3 && head === '9') {
+                if (group.length !== 7) { valid = false; err = "Harus 7 digit"; }
+                parts.push({ l: '9', v: head, d: 'Indikator' });
+                parts.push({ l: 'V<sub>1</sub>V<sub>1</sub>', v: group.substring(1,3), d: 'Jml hari visibility < 50 m' });
+                parts.push({ l: 'V<sub>2</sub>V<sub>2</sub>', v: group.substring(3,5), d: 'Jml hari visibility < 100 m' });
+                parts.push({ l: 'V<sub>3</sub>V<sub>3</sub>', v: group.substring(5,7), d: 'Jml hari visibility < 1000 m' });
+            }
+
+            // ========================= ATURAN SEKSI 4 =========================
+            else if (sectionId === 4 && head === '0') {
+                if (group.length !== 7) { valid = false; err = "Harus 7 digit"; }
+                let sn = group.charAt(1) || '';
+                let snErr = (sn !== '0' && sn !== '1');
+                let dayEv = parseInt(group.substring(5,7), 10);
+                if(dayEv > 50) dayEv -= 50;
+                let dayErr = (!isNaN(dayEv) && (dayEv > maxDays || dayEv === 0));
+                
+                if (snErr || dayErr) { valid = false; err = err ? err + "<br>Tanda suhu/Tanggal tidak sah" : "Tanda suhu/Tanggal tidak sah"; }
+
+                parts.push({ l: '0', v: head, d: 'Indikator' });
+                parts.push({ l: 's<sub>n</sub>', v: sn, d: sn==='0'?'Positif':'Negatif', e: snErr });
+                parts.push({ l: 'T<sub>xd</sub>T<sub>xd</sub>T<sub>xd</sub>', v: group.substring(2,5), d: 'Suhu rata-rata harian tertinggi' });
+                parts.push({ l: 'y<sub>x</sub>y<sub>x</sub>', v: group.substring(5,7), d: 'Tanggal kejadian (+50 jika >1 hari)', e: dayErr });
+            }
+            else if (sectionId === 4 && head === '1') {
+                if (group.length !== 7) { valid = false; err = "Harus 7 digit"; }
+                let sn = group.charAt(1) || '';
+                let snErr = (sn !== '0' && sn !== '1');
+                let dayEv = parseInt(group.substring(5,7), 10);
+                if(dayEv > 50) dayEv -= 50;
+                let dayErr = (!isNaN(dayEv) && (dayEv > maxDays || dayEv === 0));
+
+                if (snErr || dayErr) { valid = false; err = err ? err + "<br>Tanda suhu/Tanggal tidak sah" : "Tanda suhu/Tanggal tidak sah"; }
+
+                parts.push({ l: '1', v: head, d: 'Indikator' });
+                parts.push({ l: 's<sub>n</sub>', v: sn, d: sn==='0'?'Positif':'Negatif', e: snErr });
+                parts.push({ l: 'T<sub>nd</sub>T<sub>nd</sub>T<sub>nd</sub>', v: group.substring(2,5), d: 'Suhu rata-rata harian terendah' });
+                parts.push({ l: 'y<sub>n</sub>y<sub>n</sub>', v: group.substring(5,7), d: 'Tanggal kejadian (+50 jika >1 hari)', e: dayErr });
+            }
+            else if (sectionId === 4 && head === '2') {
+                if (group.length !== 7) { valid = false; err = "Harus 7 digit"; }
+                let sn = group.charAt(1) || '';
+                let snErr = (sn !== '0' && sn !== '1');
+                let dayEv = parseInt(group.substring(5,7), 10);
+                if(dayEv > 50) dayEv -= 50;
+                let dayErr = (!isNaN(dayEv) && (dayEv > maxDays || dayEv === 0));
+
+                if (snErr || dayErr) { valid = false; err = err ? err + "<br>Tanda suhu/Tanggal tidak sah" : "Tanda suhu/Tanggal tidak sah"; }
+
+                parts.push({ l: '2', v: head, d: 'Indikator' });
+                parts.push({ l: 's<sub>n</sub>', v: sn, d: sn==='0'?'Positif':'Negatif', e: snErr });
+                parts.push({ l: 'T<sub>ax</sub>T<sub>ax</sub>T<sub>ax</sub>', v: group.substring(2,5), d: 'Suhu udara tertinggi' });
+                parts.push({ l: 'y<sub>ax</sub>y<sub>ax</sub>', v: group.substring(5,7), d: 'Tanggal kejadian (+50 jika >1 hari)', e: dayErr });
+            }
+            else if (sectionId === 4 && head === '3') {
+                if (group.length !== 7) { valid = false; err = "Harus 7 digit"; }
+                let sn = group.charAt(1) || '';
+                let snErr = (sn !== '0' && sn !== '1');
+                let dayEv = parseInt(group.substring(5,7), 10);
+                if(dayEv > 50) dayEv -= 50;
+                let dayErr = (!isNaN(dayEv) && (dayEv > maxDays || dayEv === 0));
+
+                if (snErr || dayErr) { valid = false; err = err ? err + "<br>Tanda suhu/Tanggal tidak sah" : "Tanda suhu/Tanggal tidak sah"; }
+
+                parts.push({ l: '3', v: head, d: 'Indikator' });
+                parts.push({ l: 's<sub>n</sub>', v: sn, d: sn==='0'?'Positif':'Negatif', e: snErr });
+                parts.push({ l: 'T<sub>an</sub>T<sub>an</sub>T<sub>an</sub>', v: group.substring(2,5), d: 'Suhu udara terendah' });
+                parts.push({ l: 'y<sub>an</sub>y<sub>an</sub>', v: group.substring(5,7), d: 'Tanggal kejadian (+50 jika >1 hari)', e: dayErr });
+            }
+            else if (sectionId === 4 && head === '4') {
+                if (group.length !== 7) { valid = false; err = "Harus 7 digit"; }
+                let dayEv = parseInt(group.substring(5,7), 10);
+                if(dayEv > 50) dayEv -= 50;
+                let dayErr = (!isNaN(dayEv) && (dayEv > maxDays || dayEv === 0));
+                if (dayErr) { valid = false; err = err ? err + "<br>Tanggal kejadian tidak sah" : "Tanggal kejadian tidak sah"; }
+
+                parts.push({ l: '4', v: head, d: 'Indikator' });
+                parts.push({ l: 'R<sub>x</sub>R<sub>x</sub>R<sub>x</sub>R<sub>x</sub>', v: group.substring(1,5), d: 'Curah hujan harian tertinggi' });
+                parts.push({ l: 'y<sub>r</sub>y<sub>r</sub>', v: group.substring(5,7), d: 'Tanggal kejadian (+50 jika >1 hari)', e: dayErr });
+            }
+            else if (sectionId === 4 && head === '5') {
+                if (group.length !== 7) { valid = false; err = "Harus 7 digit"; }
+                let dayEv = parseInt(group.substring(5,7), 10);
+                if(dayEv > 50) dayEv -= 50;
+                let dayErr = (!isNaN(dayEv) && (dayEv > maxDays || dayEv === 0));
+                if (dayErr) { valid = false; err = err ? err + "<br>Tanggal kejadian tidak sah" : "Tanggal kejadian tidak sah"; }
+
+                parts.push({ l: '5', v: head, d: 'Indikator' });
+                parts.push({ l: 'i<sub>w</sub>', v: group.substring(1,2), d: 'Pengenal data kecepatan angin' });
+                parts.push({ l: 'f<sub>x</sub>f<sub>x</sub>f<sub>x</sub>', v: group.substring(2,5), d: 'Kecepatan angin tertinggi' });
+                parts.push({ l: 'y<sub>fx</sub>y<sub>fx</sub>', v: group.substring(5,7), d: 'Tanggal kejadian (+50 jika >1 hari)', e: dayErr });
+            }
+            else if (sectionId === 4 && head === '6') {
+                if (group.length !== 5) { valid = false; err = "Harus 5 digit"; }
+                parts.push({ l: '6', v: head, d: 'Indikator' });
+                parts.push({ l: 'D<sub>ts</sub>D<sub>ts</sub>', v: group.substring(1,3), d: 'Jumlah hari badai guntur' });
+                parts.push({ l: 'D<sub>gr</sub>D<sub>gr</sub>', v: group.substring(3,5), d: 'Jumlah hari hujan es' });
+            }
+            else if (sectionId === 4 && head === '7') {
+                if (group.length !== 6) { valid = false; err = "Harus 6 digit"; }
+                parts.push({ l: '7', v: head, d: 'Indikator' });
+                parts.push({ l: 'i<sub>y</sub>', v: group.substring(1,2), d: 'Pengenal data suhu maks/min' });
+                parts.push({ l: 'G<sub>x</sub>G<sub>x</sub>', v: group.substring(2,4), d: 'Waktu baca suhu maks (UTC)' });
+                parts.push({ l: 'G<sub>n</sub>G<sub>n</sub>', v: group.substring(4,6), d: 'Waktu baca suhu min (UTC)' });
+            }
+            else {
+                parts.push({ l: 'Ind', v: head, d: 'Indikator' });
+                parts.push({ l: 'Data', v: group.substring(1), d: 'Nilai Data' });
+            }
+
+            if(isDuplicate) {
+                valid = false;
+                let dupMsg = `Duplikasi Kelompok ${head}`;
+                err = err ? err + "<br>" + dupMsg : dupMsg;
+            }
+
+            if(!valid) globalIsValid = false;
+
+            return `<div class="flex flex-col border rounded overflow-hidden shadow-sm bg-white ${valid ? 'border-slate-300' : 'border-red-400 ring-2 ring-red-500'} code-group">
+                <div class="flex text-center text-[10.5px] font-bold bg-slate-100 text-slate-500 divide-x divide-slate-200">
+                    ${parts.map(p => `<div class="px-2 py-1 flex-1 flex items-center justify-center" title="${p.d}">${p.l}</div>`).join('')}
+                </div>
+                <div class="flex text-center text-sm font-bold tracking-wider divide-x divide-slate-200">
+                    <div class="px-2 py-1.5 ${isDuplicate ? 'bg-red-200 text-red-700' : ''}">${parts[0].v}</div>
+                    ${parts.slice(1).map(p => `<div class="px-2 py-1.5 flex-1 ${p.e ? 'bg-red-100 text-red-600' : 'text-slate-800'}">${p.v}</div>`).join('')}
+                </div>
+                ${!valid ? `<div class="text-[10px] text-red-600 bg-red-50 px-2 py-1 text-center font-sans font-medium border-t border-red-200">${err}</div>` : ''}
+            </div>`;
+        }
+
+        function buildSegment(label, value, errorMsg) {
+            let hasErr = errorMsg !== "";
+            return `
+            <div class="flex flex-col border rounded overflow-hidden shadow-sm bg-white ${hasErr ? 'border-red-400 ring-1 ring-red-400' : 'border-slate-300'}">
+                <div class="px-3 py-1 bg-slate-100 text-center text-xs font-bold text-slate-500 border-b ${hasErr ? 'border-red-200' : 'border-slate-200'}">${label}</div>
+                <div class="px-3 py-2 text-center font-mono font-bold tracking-widest ${hasErr ? 'text-red-600 bg-red-50' : 'text-slate-800'}">${value}</div>
+                ${hasErr ? `<div class="text-[10px] text-red-600 bg-red-50 px-2 py-1 text-center border-t border-red-200">${errorMsg}</div>` : ''}
+            </div>`;
+        }
+
+        function createSection0Card(groups) {
+            const card = document.createElement('div');
+            card.className = "section-card rounded-xl border border-blue-200 overflow-hidden bg-white shadow-sm";
+            card.innerHTML = `
+                <div class="bg-blue-50 px-5 py-3 border-b border-blue-200 flex justify-between items-center">
+                    <div>
+                        <span class="font-bold text-blue-800 block">SEKSI 0</span>
+                        <span class="text-xs text-blue-600">Header Identifikasi Laporan</span>
+                    </div>
+                </div>
+                <div class="p-5 flex flex-wrap gap-4 items-start">
+                    ${validateSection0(groups)}
+                </div>
+            `;
+            return card;
+        }
+
+        function createDataSectionCard(sectionId, title, groups, dupHeads = [], maxDays = 31) {
+            const card = document.createElement('div');
+            card.className = "section-card rounded-xl border border-slate-200 overflow-hidden bg-white shadow-sm";
+            
+            let html = `
+                <div class="bg-slate-100 px-5 py-3 border-b border-slate-200 flex items-center gap-3">
+                    <span class="font-bold text-slate-800">${title}</span>
+                    <span class="bg-white text-xs px-2.5 py-1 rounded-md border border-slate-300 font-mono shadow-sm">${sectionId}${sectionId}${sectionId}</span>
+                </div>
+                <div class="p-5 flex flex-wrap gap-4 items-start">
+            `;
+            groups.forEach(group => { 
+                let isDup = dupHeads.includes(group.charAt(0));
+                html += parseGroup(sectionId, group, isDup, maxDays); 
+            });
+            html += `</div>`;
+            card.innerHTML = html;
+            return card;
+        }
+
+        function updateSummary(isValid, hasEndChar, hasHeader, total, allErrors = []) {
+            const ind = document.getElementById('statusIndicator');
+            const finalValid = isValid && hasEndChar && hasHeader;
+
+            if (finalValid) {
+                ind.className = "flex items-center gap-3 p-3 rounded-lg mb-4 bg-green-50 border border-green-200 text-green-700 shadow-sm";
+                ind.innerHTML = `<i class="fa-solid fa-circle-check text-2xl"></i><div><p class="font-bold text-sm">Validasi Lolos</p><p class="text-xs opacity-90">Sandi sesuai dengan aturan WMO-BMKG CLIMAT.</p></div>`;
+            } else {
+                ind.className = "flex items-center gap-3 p-3 rounded-lg mb-4 bg-red-50 border border-red-200 text-red-700 shadow-sm";
+                ind.innerHTML = `<i class="fa-solid fa-triangle-exclamation text-2xl"></i><div><p class="font-bold text-sm">Ditemukan Kesalahan</p><p class="text-xs opacity-90">Periksa rincian kelompok atau struktur di bawah.</p></div>`;
+            }
+
+            document.getElementById('sumTotalGroups').innerText = total;
+            document.getElementById('sumHeader').innerText = hasHeader ? "Sesuai" : "Tidak Sesuai";
+            document.getElementById('sumHeader').className = hasHeader ? "font-bold text-green-600" : "font-bold text-red-600";
+            
+            let dupText = "Aman (Sesuai Regulasi)";
+            let dupClass = "font-bold text-green-600";
+            if(allErrors.length > 0) {
+                dupText = allErrors.join(" | ");
+                dupClass = "font-bold text-red-600 text-xs";
+            }
+            document.getElementById('sumDuplicate').innerText = dupText;
+            document.getElementById('sumDuplicate').className = dupClass;
+            
+            document.getElementById('sumEndChar').innerText = hasEndChar ? "Ditemukan (=)" : "Hilang";
+            document.getElementById('sumEndChar').className = hasEndChar ? "font-bold text-green-600" : "font-bold text-red-600";
+        }
+    </script>
+</body>
+</html>
