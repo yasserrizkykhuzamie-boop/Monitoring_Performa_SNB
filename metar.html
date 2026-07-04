@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Dashboard METAR - 12 Bulan</title>
+    <title>Dashboard METAR - 12 Bulan & Triwulanan</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <style>
         /* ----- RESET & VARIABLES ----- */
@@ -56,7 +56,6 @@
         .card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; flex-wrap: wrap; gap: 8px; }
         .card-header h2 { font-size: 16px; font-weight: 600; color: var(--primary); display: flex; align-items: center; gap: 10px; }
         .card-header .chip { font-size: 12px; font-weight: 500; color: #5679a9; background: #f0f6fe; padding: 4px 14px; border-radius: 40px; }
-        .chart-purpose { font-size: 12px; color: #6a8aaa; background: #f5f9ff; padding: 8px 14px; border-radius: 8px; margin-top: 12px; border-left: 3px solid #1abc9c; line-height: 1.5; }
         
         .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
         .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 24px; }
@@ -132,10 +131,17 @@
                 <select id="yearSelect"></select>
             </div>
             <div class="filter-group">
-                <label for="monthSelect">📅 Bulan</label>
-                <select id="monthSelect"></select>
+                <label for="modeSelect">⚡ Mode</label>
+                <select id="modeSelect">
+                    <option value="month">Bulanan</option>
+                    <option value="quarter">Triwulanan</option>
+                </select>
             </div>
-            <div class="month-tabs" id="monthTabs"></div>
+            <div class="filter-group">
+                <label for="periodSelect" id="periodLabel">📅 Bulan</label>
+                <select id="periodSelect"></select>
+            </div>
+            <div class="month-tabs" id="periodTabs"></div>
         </div>
 
         <div id="uiMessageArea"></div>
@@ -151,7 +157,7 @@
         // KONFIGURASI GOOGLE SPREADSHEET 
         // ============================================================
         const PUBLISHED_ID = '2PACX-1vT4LcIB_-j2pfvt4BUNx4W6GKZiglF1UNo0-oR2yeKqjp7RY_004DF1GVmTxsuUiTx7oyBbrOsbx4Hp'; 
-        const GID = '1132195706'; // <--- GID KHUSUS SHEET db_metar
+        const GID = '1132195706'; 
         const SHEET_NAME = 'db_metar';
 
         // ============================================================
@@ -163,15 +169,15 @@
         let statsData = []; 
         let dailyStats = []; 
         let currentYear = new Date().getFullYear().toString();
+        let currentMode = 'month'; // 'month' atau 'quarter'
+        let currentPeriodIdx = new Date().getMonth();
 
         const monthNames = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+        const quarterNames = ['Triwulan I (Q1)', 'Triwulan II (Q2)', 'Triwulan III (Q3)', 'Triwulan IV (Q4)'];
+        const quarterShortNames = ['TW I', 'TW II', 'TW III', 'TW IV'];
         
-        // Buat label UTC 24 jam (00 sampai 23)
         const utcLabels = Array.from({length: 24}, (_, i) => i.toString().padStart(2, '0'));
 
-        // ============================================================
-        // CSV PARSER HELPER
-        // ============================================================
         function csvToArray(strData) {
             const objPattern = new RegExp(("(\\,|\\r?\\n|\\r|^)(?:\"([^\"]*(?:\"\"[^\"]*)*)\"|([^\\,\\r\\n]*))"), "gi");
             let arrData = [[]];
@@ -187,20 +193,15 @@
             return arrData;
         }
 
-        // ============================================================
-        // FETCH & PARSE DATA
-        // ============================================================
         async function fetchSheetData() {
             document.getElementById('loadingOverlay').style.display = 'flex';
             document.getElementById('uiMessageArea').innerHTML = ''; 
             document.getElementById('dashboardContent').innerHTML = ''; 
             
             const targetUrl = `https://docs.google.com/spreadsheets/d/e/${PUBLISHED_ID}/pub?gid=${GID}&single=true&output=csv`;
-            
             let csvText = null;
             
             try {
-                // Tarik Langsung
                 try {
                     const directResponse = await fetch(targetUrl);
                     if (directResponse.ok) {
@@ -213,7 +214,6 @@
                     console.warn("Direct fetch diblokir. Menggunakan Proxy...");
                 }
 
-                // Proxy AllOrigins
                 if (!csvText) {
                     const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`;
                     const proxyResponse = await fetch(proxyUrl);
@@ -249,7 +249,6 @@
                     <div class="msg-box msg-error">
                         <h3 style="color:#e74c3c; margin-bottom:10px;">❌ Gagal Mengambil Data</h3>
                         <p><strong>Pesan:</strong> ${error.message}</p>
-                        <p style="margin-top:10px;">Coba gunakan Firefox atau Live Server jika Anda membuka ini dari file HTML lokal.</p>
                     </div>
                 `;
             } finally {
@@ -270,7 +269,6 @@
                 if (cells.length < 7 || !cells[0] || !cells[1] || !cells[3]) continue; 
 
                 try {
-                    // PARSE TANGGAL SUPER KEBAL
                     let dateStr = cells[0].replace(/["']/g, '').trim(); 
                     let dateObj = new Date(dateStr);
                     
@@ -297,30 +295,24 @@
                     const day = dateObj.getDate();
                     yearsSet.add(year);
 
-                    // PARSE JAM UTC
                     let utcStr = cells[1].replace(/["']/g, '').trim(); 
                     let hour = 0;
                     if (utcStr.includes(':')) hour = parseInt(utcStr.split(':')[0]);
                     else if (!isNaN(parseInt(utcStr))) hour = parseInt(utcStr); 
                     if (hour < 0 || hour > 23) hour = 0;
 
-                    // PARSE OBSERVER (Index 3 di db_metar)
                     let observer = cells[3].replace(/["']/g, '').trim().toUpperCase();
                     if (!observer) continue;
                     observersSet.add(observer);
 
-                    // PARSE COMPLAIN (Index 4)
                     let complainText = cells[4] ? cells[4].toUpperCase().trim() : '';
                     let isComplain = complainText.includes('YES') || complainText.includes('YA') || complainText === '1' ? 1 : 0;
                     
-                    // PARSE AKURASI (Index 5)
                     let akurasiStr = cells[5] ? cells[5].replace(/[^0-9.]/g, '') : '0';
                     let akurasi = parseFloat(akurasiStr);
-                    // Sesuaikan jika data sheet berupa 0.xx atau persentase utuh (100)
                     if(akurasi > 1 && akurasi <= 100) akurasi = akurasi / 100;
                     if(isNaN(akurasi)) akurasi = 0;
 
-                    // PARSE KETEPATAN WAKTU (Index 6)
                     let ketepatanStr = cells[6] ? cells[6].replace(/[^0-9.]/g, '') : '0';
                     let ketepatan = parseFloat(ketepatanStr);
                     if(ketepatan > 1 && ketepatan <= 100) ketepatan = ketepatan / 100;
@@ -366,7 +358,7 @@
                 }
             });
 
-            setupMonthTabs();
+            setupPeriodControls();
             
             let activeMonth = new Date().getMonth();
             if (statsData[activeMonth] && statsData[activeMonth].every(p => p.total === 0)) {
@@ -377,8 +369,9 @@
                 }
             }
 
-            document.getElementById('monthSelect').value = activeMonth;
-            updateDashboard(activeMonth);
+            currentPeriodIdx = currentMode === 'month' ? activeMonth : Math.floor(activeMonth / 3);
+            document.getElementById('periodSelect').value = currentPeriodIdx;
+            updateDashboard();
         }
 
         function buildEmptyDataArrays() {
@@ -404,33 +397,49 @@
             }
         }
 
-        // ============================================================
-        // FUNGSI KALKULASI STATISTIK METAR
-        // ============================================================
-        function getTargetDeliveries(year, monthIdx) {
-            const daysInMonth = new Date(parseInt(year), monthIdx + 1, 0).getDate();
-            return daysInMonth * 48; // 48 kali sehari
+        function getMonthsInPeriod() {
+            if (currentMode === 'month') {
+                return [currentPeriodIdx];
+            } else {
+                return [currentPeriodIdx * 3, currentPeriodIdx * 3 + 1, currentPeriodIdx * 3 + 2];
+            }
         }
 
-        function getTotals(monthIdx) {
-            const stats = statsData[monthIdx];
+        function getTargetDeliveries(year, monthsArray) {
+            let totalDays = 0;
+            monthsArray.forEach(mIdx => {
+                totalDays += new Date(parseInt(year), mIdx + 1, 0).getDate();
+            });
+            return totalDays * 48; // 48 kali sehari
+        }
+
+        function getTotals(monthsArray) {
             let total = 0, akurasiSum = 0, ketepatanSum = 0, complainCount = 0;
-            stats.forEach(s => {
-                total += s.total;
-                akurasiSum += s.akurasiSum;
-                ketepatanSum += s.ketepatanSum;
-                complainCount += s.complainCount;
+            monthsArray.forEach(mIdx => {
+                const stats = statsData[mIdx] || [];
+                stats.forEach(s => {
+                    total += s.total;
+                    akurasiSum += s.akurasiSum;
+                    ketepatanSum += s.ketepatanSum;
+                    complainCount += s.complainCount;
+                });
             });
             return { total, akurasiSum, ketepatanSum, complainCount };
         }
 
-        function getRanking(monthIdx) {
-            const stats = statsData[monthIdx];
+        function getRanking(monthsArray) {
             return personnel.map((name, i) => {
-                const s = stats[i];
-                const acc = s.total > 0 ? (s.akurasiSum / s.total) * 100 : 0;
-                const tepat = s.total > 0 ? (s.ketepatanSum / s.total) * 100 : 0;
-                return { name, total: s.total, acc, tepat, complain: s.complainCount };
+                let total = 0, akurasiSum = 0, ketepatanSum = 0, complain = 0;
+                monthsArray.forEach(mIdx => {
+                    const s = (statsData[mIdx] && statsData[mIdx][i]) || { total: 0, akurasiSum: 0, ketepatanSum: 0, complainCount: 0 };
+                    total += s.total;
+                    akurasiSum += s.akurasiSum;
+                    ketepatanSum += s.ketepatanSum;
+                    complain += s.complainCount;
+                });
+                const acc = total > 0 ? (akurasiSum / total) * 100 : 0;
+                const tepat = total > 0 ? (ketepatanSum / total) * 100 : 0;
+                return { name, total, acc, tepat, complain };
             }).filter(d => d.total > 0).sort((a, b) => b.acc - a.acc || b.total - a.total);
         }
 
@@ -438,7 +447,7 @@
             const months = []; const totals = []; const accuracies = []; const ketepatans = [];
             for (let m = 0; m < 12; m++) {
                 months.push(monthNames[m].substring(0, 3));
-                const { total, akurasiSum, ketepatanSum } = getTotals(m);
+                const { total, akurasiSum, ketepatanSum } = getTotals([m]);
                 totals.push(total);
                 accuracies.push(total > 0 ? (akurasiSum / total) * 100 : 0);
                 ketepatans.push(total > 0 ? (ketepatanSum / total) * 100 : 0);
@@ -446,20 +455,18 @@
             return { months, totals, accuracies, ketepatans };
         }
 
-        // ============================================================
-        // RENDER UI DASHBOARD
-        // ============================================================
-        function renderDashboard(monthIdx) {
+        function renderDashboard() {
             if(personnel.length === 0) return ''; 
 
-            const month = monthNames[monthIdx];
-            const targetDel = getTargetDeliveries(currentYear, monthIdx); 
-            const overall = getTotals(monthIdx);
+            const monthsArray = getMonthsInPeriod();
+            const periodTitle = currentMode === 'month' ? monthNames[currentPeriodIdx] : quarterNames[currentPeriodIdx];
+            const targetDel = getTargetDeliveries(currentYear, monthsArray); 
+            const overall = getTotals(monthsArray);
             
-            const activeCount = statsData[monthIdx].filter(s => s.total > 0).length;
+            const ranking = getRanking(monthsArray);
+            const activeCount = ranking.length;
             const avgAcc = overall.total > 0 ? (overall.akurasiSum / overall.total) * 100 : 0;
             const avgTepat = overall.total > 0 ? (overall.ketepatanSum / overall.total) * 100 : 0;
-            const ranking = getRanking(monthIdx);
 
             let html = '';
             
@@ -468,7 +475,7 @@
                     <div class="summary-card accent-blue">
                         <div class="label">📦 Total Pengiriman</div>
                         <div class="value">${overall.total} <span style="font-size: 20px; color: #7a9abb; font-weight: 500;">/ ${targetDel}</span></div>
-                        <div class="sub">Realisasi vs Target (${month})</div>
+                        <div class="sub">Realisasi vs Target (${periodTitle})</div>
                     </div>
                     <div class="summary-card accent-green">
                         <div class="label">🎯 Rata-Rata Akurasi</div>
@@ -483,7 +490,7 @@
                     <div class="summary-card accent-red">
                         <div class="label">⚠️ Total Complain</div>
                         <div class="value">${overall.complainCount}</div>
-                        <div class="sub">Laporan di bulan ini</div>
+                        <div class="sub">Laporan di periode ini</div>
                     </div>
                     <div class="summary-card accent-orange">
                         <div class="label">🏆 Peringkat Teratas</div>
@@ -496,7 +503,7 @@
                 <div class="card" style="margin-bottom: 24px;">
                     <div class="card-header">
                         <h2>📆 Tren METAR Harian</h2>
-                        <span class="chip">${month} ${currentYear}</span>
+                        <span class="chip">${periodTitle} ${currentYear}</span>
                     </div>
                     <div class="chart-container tall">
                         <canvas id="dailyTrendChart"></canvas>
@@ -512,22 +519,22 @@
                     <div class="chart-container tall"><canvas id="trendChart"></canvas></div>
                 </div>
                 <div class="card">
-                    <div class="card-header"><h2>🕸️ Radar Performa (Top 5)</h2><span class="chip">${month}</span></div>
+                    <div class="card-header"><h2>🕸️ Radar Performa (Top 5)</h2><span class="chip">${periodTitle}</span></div>
                     <div class="chart-container tall"><canvas id="radarChart"></canvas></div>
                 </div>
             </div>`;
 
             html += `<div class="grid-3">
                 <div class="card">
-                    <div class="card-header"><h2>🍩 Kontribusi Personil</h2><span class="chip">${month}</span></div>
+                    <div class="card-header"><h2>🍩 Kontribusi Personil</h2><span class="chip">${periodTitle}</span></div>
                     <div class="chart-container"><canvas id="polarChart"></canvas></div>
                 </div>
                 <div class="card">
-                    <div class="card-header"><h2>📊 Beban Jam UTC (Top 5)</h2><span class="chip">${month}</span></div>
+                    <div class="card-header"><h2>📊 Beban Jam UTC (Top 5)</h2><span class="chip">${periodTitle}</span></div>
                     <div class="chart-container"><canvas id="stackedChart"></canvas></div>
                 </div>
                 <div class="card">
-                    <div class="card-header"><h2>📉 Rasio Complain</h2><span class="chip">${month}</span></div>
+                    <div class="card-header"><h2>📉 Rasio Complain</h2><span class="chip">${periodTitle}</span></div>
                     <div class="chart-container"><canvas id="doughnutChart"></canvas></div>
                 </div>
             </div>`;
@@ -535,10 +542,10 @@
             const top8 = ranking.slice(0, 8);
             html += `<div class="grid-2-1">
                 <div class="card">
-                    <div class="card-header"><h2>🔥 Heatmap Akurasi (Top 8)</h2><span class="chip">${month}</span></div>
+                    <div class="card-header"><h2>🔥 Heatmap Akurasi (Top 8)</h2><span class="chip">${periodTitle}</span></div>
                     <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:12px;">`;
             
-            if(top8.length === 0) html += `<p style="grid-column: span 4; text-align:center; color:#999;">Belum ada data di bulan ini.</p>`;
+            if(top8.length === 0) html += `<p style="grid-column: span 4; text-align:center; color:#999;">Belum ada data di periode ini.</p>`;
             
             top8.forEach((d) => {
                 const pct = Math.round(d.acc);
@@ -556,7 +563,7 @@
             });
             html += `</div></div>
                 <div class="card">
-                    <div class="card-header"><h2>🏆 Peringkat Keseluruhan</h2><span class="chip">${month}</span></div>
+                    <div class="card-header"><h2>🏆 Peringkat Keseluruhan</h2><span class="chip">${periodTitle}</span></div>
                     <div style="max-height:280px; overflow-y:auto;">
                         <table class="rank-table">
                             <thead><tr><th>Rank</th><th>Pengamat</th><th>Total</th><th>Akurasi</th><th>Ketepatan</th></tr></thead>
@@ -574,31 +581,30 @@
             return html;
         }
 
-        // ============================================================
-        // RENDER CHARTS
-        // ============================================================
         let chartInstances = {};
-        function renderAllCharts(monthIdx) {
+        function renderAllCharts() {
             if(personnel.length === 0) return;
             Object.values(chartInstances).forEach(ch => { if (ch) ch.destroy(); });
             chartInstances = {};
 
-            const ranking = getRanking(monthIdx);
+            const monthsArray = getMonthsInPeriod();
+            const ranking = getRanking(monthsArray);
             const trend = getMonthlyTrend();
-            const utc = utcData[monthIdx];
             const top5 = ranking.slice(0, 5);
 
             // 0. CHART HARIAN
-            const daysInMonth = new Date(parseInt(currentYear), monthIdx + 1, 0).getDate();
             const dailyLabels = [], dailyAccData = [], dailyTepatData = [], dailyTotalData = [];
-
-            for (let d = 1; d <= daysInMonth; d++) {
-                dailyLabels.push(d); 
-                const stats = dailyStats[monthIdx][d];
-                dailyTotalData.push(stats.total);
-                dailyAccData.push(stats.total > 0 ? (stats.akurasiSum / stats.total * 100) : null);
-                dailyTepatData.push(stats.total > 0 ? (stats.ketepatanSum / stats.total * 100) : null);
-            }
+            monthsArray.forEach(mIdx => {
+                const daysInMonth = new Date(parseInt(currentYear), mIdx + 1, 0).getDate();
+                for (let d = 1; d <= daysInMonth; d++) {
+                    const labelStr = currentMode === 'quarter' ? `${d} ${monthNames[mIdx].substring(0,3)}` : `${d}`;
+                    dailyLabels.push(labelStr);
+                    const stats = (dailyStats[mIdx] && dailyStats[mIdx][d]) || { total: 0, akurasiSum: 0, ketepatanSum: 0 };
+                    dailyTotalData.push(stats.total);
+                    dailyAccData.push(stats.total > 0 ? (stats.akurasiSum / stats.total * 100) : null);
+                    dailyTepatData.push(stats.total > 0 ? (stats.ketepatanSum / stats.total * 100) : null);
+                }
+            });
 
             if(document.getElementById('dailyTrendChart')) {
                 chartInstances.dailyTrend = new Chart(document.getElementById('dailyTrendChart'), {
@@ -608,11 +614,11 @@
                         datasets: [
                             {
                                 label: 'Akurasi (%)', data: dailyAccData, borderColor: '#27ae60', backgroundColor: 'rgba(39, 174, 96,0.1)',
-                                tension: 0.3, borderWidth: 3, pointRadius: 4, yAxisID: 'y', spanGaps: true
+                                tension: 0.3, borderWidth: 3, pointRadius: currentMode === 'quarter' ? 1 : 4, yAxisID: 'y', spanGaps: true
                             },
                             {
                                 label: 'Ketepatan Waktu (%)', data: dailyTepatData, borderColor: '#2980b9', backgroundColor: 'rgba(41, 128, 185,0.1)',
-                                tension: 0.3, borderWidth: 3, pointRadius: 4, yAxisID: 'y', spanGaps: true, borderDash: [5,5]
+                                tension: 0.3, borderWidth: 3, pointRadius: currentMode === 'quarter' ? 1 : 4, yAxisID: 'y', spanGaps: true, borderDash: [5,5]
                             },
                             {
                                 type: 'bar', label: 'Total Kiriman', data: dailyTotalData, backgroundColor: 'rgba(26,58,107,0.15)', borderRadius: 4, yAxisID: 'y1'
@@ -623,7 +629,8 @@
                         responsive: true, maintainAspectRatio: false,
                         scales: {
                             y: { beginAtZero: true, max: 100 },
-                            y1: { beginAtZero: true, position: 'right', grid: {display: false} }
+                            y1: { beginAtZero: true, position: 'right', grid: {display: false} },
+                            x: { ticks: { maxTicksLimit: currentMode === 'quarter' ? 15 : 31 } }
                         },
                         plugins: { tooltip: { mode: 'index', intersect: false } }
                     }
@@ -645,12 +652,12 @@
             
             // 2. RADAR
             if(document.getElementById('radarChart') && top5.length > 0) {
+                const scaleDivisor = currentMode === 'quarter' ? 24 : 8;
                 const radarData = top5.map(d => {
-                    // Penyesuaian agar max total sekitar 800 terlihat bagus di radar skala 0-100
-                    return [d.total / 8, d.acc, d.tepat, d.complain === 0 ? 100 : Math.max(0, 100 - (d.complain * 10))];
+                    return [d.total / scaleDivisor, d.acc, d.tepat, d.complain === 0 ? 100 : Math.max(0, 100 - (d.complain * 10))];
                 });
                 chartInstances.radar = new Chart(document.getElementById('radarChart'), {
-                    type: 'radar', data: { labels: ['Kirim/8', 'Akurasi', 'Tepat Waktu', 'Bebas Complain'],
+                    type: 'radar', data: { labels: [`Kirim/${scaleDivisor}`, 'Akurasi', 'Tepat Waktu', 'Bebas Complain'],
                         datasets: top5.map((d, i) => ({ label: d.name, data: radarData[i], borderColor: `hsl(${i * 60 + 200}, 70%, 50%)`, backgroundColor: `hsla(${i * 60 + 200}, 70%, 50%, 0.15)` }))
                     }, options: { responsive: true, maintainAspectRatio: false, scales: { r: { beginAtZero: true, max: 100 } } }
                 });
@@ -668,15 +675,24 @@
             // 4. STACKED BAR (24 JAM UTC)
             if(document.getElementById('stackedChart') && top5.length > 0) {
                 const top5Utc = top5.map(d => personnel.indexOf(d.name));
+                const aggregatedUtc = top5Utc.map(pIdx => {
+                    const sumUtc = new Array(24).fill(0);
+                    monthsArray.forEach(mIdx => {
+                        const mUtc = (utcData[mIdx] && utcData[mIdx][pIdx]) || new Array(24).fill(0);
+                        mUtc.forEach((val, h) => sumUtc[h] += val);
+                    });
+                    return sumUtc;
+                });
+
                 chartInstances.stacked = new Chart(document.getElementById('stackedChart'), {
-                    type: 'bar', data: { labels: utcLabels, datasets: top5Utc.map((idx, i) => ({ label: personnel[idx], data: utc[idx], backgroundColor: `hsl(${i * 60 + 200}, 70%, 55%)` })) },
+                    type: 'bar', data: { labels: utcLabels, datasets: top5.map((d, i) => ({ label: d.name, data: aggregatedUtc[i], backgroundColor: `hsl(${i * 60 + 200}, 70%, 55%)` })) },
                     options: { responsive: true, maintainAspectRatio: false, scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true } } }
                 });
             }
 
             // 5. DOUGHNUT (Rasio Complain)
             if(document.getElementById('doughnutChart')) {
-                const totalStats = getTotals(monthIdx);
+                const totalStats = getTotals(monthsArray);
                 const noComplain = Math.max(0, totalStats.total - totalStats.complainCount);
                 chartInstances.doughnut = new Chart(document.getElementById('doughnutChart'), {
                     type: 'doughnut', data: { labels: ['Aman (NO Complain)', 'Complain (YES)'], datasets: [{ data: [noComplain, totalStats.complainCount], backgroundColor: ['#27ae60', '#c0392b'] }] },
@@ -685,30 +701,42 @@
             }
         }
 
-        // ============================================================
-        // EVENT LISTENER & INIT
-        // ============================================================
-        function setupMonthTabs() {
-            const tabsContainer = document.getElementById('monthTabs');
-            tabsContainer.innerHTML = '';
-            const selMonth = parseInt(document.getElementById('monthSelect').value);
-            monthNames.forEach((name, idx) => {
+        function setupPeriodControls() {
+            const periodSelect = document.getElementById('periodSelect');
+            const periodTabs = document.getElementById('periodTabs');
+            const periodLabel = document.getElementById('periodLabel');
+
+            periodSelect.innerHTML = '';
+            periodTabs.innerHTML = '';
+
+            const list = currentMode === 'month' ? monthNames : quarterNames;
+            const shortList = currentMode === 'month' ? monthNames.map(m => m.substring(0,3)) : quarterShortNames;
+            periodLabel.textContent = currentMode === 'month' ? '📅 Bulan' : '📅 Triwulan';
+
+            list.forEach((name, idx) => {
+                const opt = document.createElement('option');
+                opt.value = idx; opt.textContent = name;
+                if(idx === currentPeriodIdx) opt.selected = true;
+                periodSelect.appendChild(opt);
+
                 const btn = document.createElement('button');
-                btn.className = 'month-tab' + (idx === selMonth ? ' active' : '');
-                btn.textContent = name.substring(0, 3);
-                btn.addEventListener('click', function() {
-                    document.querySelectorAll('.month-tab').forEach(t => t.classList.remove('active'));
-                    this.classList.add('active');
-                    document.getElementById('monthSelect').value = idx;
-                    updateDashboard(idx);
-                });
-                tabsContainer.appendChild(btn);
+                btn.className = 'month-tab' + (idx === currentPeriodIdx ? ' active' : '');
+                btn.textContent = shortList[idx];
+                btn.addEventListener('click', () => selectPeriod(idx));
+                periodTabs.appendChild(btn);
             });
         }
 
-        function updateDashboard(monthIdx) {
-            document.getElementById('dashboardContent').innerHTML = renderDashboard(monthIdx);
-            setTimeout(() => { renderAllCharts(monthIdx); }, 80);
+        function selectPeriod(idx) {
+            currentPeriodIdx = idx;
+            document.getElementById('periodSelect').value = idx;
+            document.querySelectorAll('#periodTabs .month-tab').forEach((t, i) => t.classList.toggle('active', i === idx));
+            updateDashboard();
+        }
+
+        function updateDashboard() {
+            document.getElementById('dashboardContent').innerHTML = renderDashboard();
+            setTimeout(() => { renderAllCharts(); }, 80);
         }
 
         function init() {
@@ -717,17 +745,20 @@
             document.getElementById('currentDate').textContent = dateStr;
             document.getElementById('updateTime').textContent = `${dateStr}, ${now.toLocaleTimeString('id-ID', {hour:'2-digit', minute:'2-digit'})} WIB`;
 
-            document.getElementById('monthSelect').innerHTML = monthNames.map((m, i) => `<option value="${i}">${m}</option>`).join('');
-            document.getElementById('monthSelect').value = now.getMonth();
-
             document.getElementById('yearSelect').addEventListener('change', function() {
                 currentYear = this.value;
                 fetchSheetData(); 
             });
-            document.getElementById('monthSelect').addEventListener('change', function() {
-                const idx = parseInt(this.value);
-                document.querySelectorAll('.month-tab').forEach((tab, i) => tab.classList.toggle('active', i === idx));
-                updateDashboard(idx);
+
+            document.getElementById('modeSelect').addEventListener('change', function() {
+                currentMode = this.value;
+                currentPeriodIdx = currentMode === 'month' ? new Date().getMonth() : Math.floor(new Date().getMonth() / 3);
+                setupPeriodControls();
+                updateDashboard();
+            });
+
+            document.getElementById('periodSelect').addEventListener('change', function() {
+                selectPeriod(parseInt(this.value));
             });
 
             fetchSheetData();
