@@ -129,10 +129,17 @@
                 <select id="yearSelect"></select>
             </div>
             <div class="filter-group">
-                <label for="monthSelect">📅 Bulan</label>
-                <select id="monthSelect"></select>
+                <label for="modeSelect">⚡ Mode</label>
+                <select id="modeSelect">
+                    <option value="month">Bulanan</option>
+                    <option value="quarter">Triwulanan</option>
+                </select>
             </div>
-            <div class="month-tabs" id="monthTabs"></div>
+            <div class="filter-group">
+                <label for="periodSelect" id="periodLabel">📅 Bulan</label>
+                <select id="periodSelect"></select>
+            </div>
+            <div class="month-tabs" id="periodTabs"></div>
         </div>
 
         <div id="uiMessageArea"></div>
@@ -145,11 +152,11 @@
 
     <script>
         // ============================================================
-        // KONFIGURASI GOOGLE SPREADSHEET (LENGKAP DENGAN SHEET NAME)
+        // KONFIGURASI GOOGLE SPREADSHEET
         // ============================================================
         const PUBLISHED_ID = '2PACX-1vT4LcIB_-j2pfvt4BUNx4W6GKZiglF1UNo0-oR2yeKqjp7RY_004DF1GVmTxsuUiTx7oyBbrOsbx4Hp'; 
         const GID = '1461511385'; 
-        const SHEET_NAME = 'db_adwarning'; // Target langsung ke tab yang diinginkan
+        const SHEET_NAME = 'db_adwarning'; 
 
         // ============================================================
         // STRUKTUR DATA GLOBAL
@@ -159,11 +166,15 @@
         let statsData = []; // [month][person] = { warnings: 0, accuracySum: 0, validWarningDays: 0, greatCount: 0 }
         let dailyStats = []; // [month][day] = { warnings: 0, accuracySum: 0, validWarningDays: 0 }
         let currentYear = new Date().getFullYear().toString();
+        let currentMode = 'month'; // 'month' atau 'quarter'
+        let currentPeriodIdx = new Date().getMonth();
 
         const monthNames = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+        const quarterNames = ['Triwulan I (Q1)', 'Triwulan II (Q2)', 'Triwulan III (Q3)', 'Triwulan IV (Q4)'];
+        const quarterShortNames = ['TW I', 'TW II', 'TW III', 'TW IV'];
 
         // ============================================================
-        // CSV PARSER HELPER (AUTO DELIMITER KOMA / TITIK KOMA / TAB)
+        // CSV PARSER HELPER (AUTO DELIMITER)
         // ============================================================
         function csvToArray(strData) {
             strData = strData.trim();
@@ -198,7 +209,6 @@
             document.getElementById('uiMessageArea').innerHTML = ''; 
             document.getElementById('dashboardContent').innerHTML = ''; 
             
-            // Penambahan &sheet=db_adwarning agar menarik langsung dari tab tersebut
             const targetUrl = `https://docs.google.com/spreadsheets/d/e/${PUBLISHED_ID}/pub?gid=${GID}&single=true&sheet=${encodeURIComponent(SHEET_NAME)}&output=csv`;
             let csvText = null;
             
@@ -267,7 +277,7 @@
                 if (cells.length < 4 || !cells[0] || !cells[1]) continue; 
 
                 try {
-                    // 1. PARSE TANGGAL (Kolom 0: TIMESTAMP - Aman jika ada jam)
+                    // 1. PARSE TANGGAL
                     let dateStr = cells[0].replace(/["']/g, '').trim().split(' ')[0]; 
                     let dateObj = new Date(dateStr);
                     
@@ -299,19 +309,19 @@
                     const day = dateObj.getDate();
                     yearsSet.add(year);
 
-                    // 2. PARSE FORECASTER (Kolom 1)
+                    // 2. PARSE FORECASTER
                     let observer = cells[1].replace(/["']/g, '').trim().toUpperCase();
                     if (!observer) continue;
                     observersSet.add(observer);
 
-                    // 3. PARSE JUMLAH AD WARNING (Kolom 3)
+                    // 3. PARSE WARNINGS
                     let warningStr = cells[3] ? cells[3].toString().toUpperCase().trim() : '';
                     let warnings = 0;
                     if (!warningStr.includes('NIHIL') && warningStr !== '') {
                         warnings = parseInt(warningStr.replace(/[^0-9]/g, '')) || 0;
                     }
 
-                    // 4. PARSE AKURASI (Kolom 2) - Otomatis 100% jika kosong tapi ada warning
+                    // 4. PARSE AKURASI
                     let accStr = cells[2] ? cells[2].toString().toUpperCase().trim() : '';
                     let akurasi = 0;
                     if (warnings > 0) {
@@ -323,7 +333,6 @@
                         }
                     }
 
-                    // Mutu diisi otomatis 1 jika akurasi maksimal
                     let isGreat = (warnings > 0 && akurasi >= 100) ? 1 : 0;
 
                     rawData.push({ year, month, day, observer, warnings, akurasi, isGreat });
@@ -353,32 +362,35 @@
             rawData.forEach(d => {
                 if(d.year === currentYear) {
                     const pIdx = personnel.indexOf(d.observer);
-                    if (d.warnings > 0) {
-                        statsData[d.month][pIdx].warnings += d.warnings;
-                        statsData[d.month][pIdx].accuracySum += d.akurasi;
-                        statsData[d.month][pIdx].validWarningDays += 1;
-                        statsData[d.month][pIdx].greatCount += d.isGreat;
+                    if (pIdx !== -1 && statsData[d.month] && statsData[d.month][pIdx]) {
+                        if (d.warnings > 0) {
+                            statsData[d.month][pIdx].warnings += d.warnings;
+                            statsData[d.month][pIdx].accuracySum += d.akurasi;
+                            statsData[d.month][pIdx].validWarningDays += 1;
+                            statsData[d.month][pIdx].greatCount += d.isGreat;
 
-                        dailyStats[d.month][d.day].warnings += d.warnings;
-                        dailyStats[d.month][d.day].accuracySum += d.akurasi;
-                        dailyStats[d.month][d.day].validWarningDays += 1;
+                            dailyStats[d.month][d.day].warnings += d.warnings;
+                            dailyStats[d.month][d.day].accuracySum += d.akurasi;
+                            dailyStats[d.month][d.day].validWarningDays += 1;
+                        }
                     }
                 }
             });
 
-            setupMonthTabs();
+            setupPeriodControls();
             
             let activeMonth = new Date().getMonth();
-            if (statsData[activeMonth] && statsData[activeMonth].every(p => p.warnings === 0)) {
+            if (statsData[activeMonth] && statsData[activeMonth].every(p => p && p.warnings === 0)) {
                 for(let m = 11; m >= 0; m--) {
-                    if(!statsData[m].every(p => p.warnings === 0)) {
+                    if(statsData[m] && !statsData[m].every(p => p && p.warnings === 0)) {
                         activeMonth = m; break;
                     }
                 }
             }
 
-            document.getElementById('monthSelect').value = activeMonth;
-            updateDashboard(activeMonth);
+            currentPeriodIdx = currentMode === 'month' ? activeMonth : Math.floor(activeMonth / 3);
+            document.getElementById('periodSelect').value = currentPeriodIdx;
+            updateDashboard();
         }
 
         function buildEmptyDataArrays() {
@@ -400,28 +412,45 @@
             }
         }
 
+        function getMonthsInPeriod() {
+            if (currentMode === 'month') {
+                return [currentPeriodIdx];
+            } else {
+                return [currentPeriodIdx * 3, currentPeriodIdx * 3 + 1, currentPeriodIdx * 3 + 2];
+            }
+        }
+
         // ============================================================
         // FUNGSI KALKULASI STATISTIK AD WARNING
         // ============================================================
-        function getTotals(monthIdx) {
-            const stats = statsData[monthIdx];
+        function getTotals(monthsArray) {
             let totalWarnings = 0, totalAccuracySum = 0, totalValidDays = 0, totalGreat = 0;
-
-            stats.forEach(s => {
-                totalWarnings += s.warnings;
-                totalAccuracySum += s.accuracySum;
-                totalValidDays += s.validWarningDays;
-                totalGreat += s.greatCount;
+            monthsArray.forEach(mIdx => {
+                const stats = statsData[mIdx] || [];
+                stats.forEach(s => {
+                    if (s) {
+                        totalWarnings += s.warnings;
+                        totalAccuracySum += s.accuracySum;
+                        totalValidDays += s.validWarningDays;
+                        totalGreat += s.greatCount;
+                    }
+                });
             });
             return { totalWarnings, totalAccuracySum, totalValidDays, totalGreat };
         }
 
-        function getRanking(monthIdx) {
-            const stats = statsData[monthIdx];
+        function getRanking(monthsArray) {
             return personnel.map((name, i) => {
-                const s = stats[i];
-                const avgAcc = s.validWarningDays > 0 ? (s.accuracySum / s.validWarningDays) : 0;
-                return { name, warnings: s.warnings, acc: avgAcc, great: s.greatCount };
+                let warnings = 0, accuracySum = 0, validWarningDays = 0, greatCount = 0;
+                monthsArray.forEach(mIdx => {
+                    const s = (statsData[mIdx] && statsData[mIdx][i]) || { warnings: 0, accuracySum: 0, validWarningDays: 0, greatCount: 0 };
+                    warnings += s.warnings;
+                    accuracySum += s.accuracySum;
+                    validWarningDays += s.validWarningDays;
+                    greatCount += s.greatCount;
+                });
+                const avgAcc = validWarningDays > 0 ? (accuracySum / validWarningDays) : 0;
+                return { name, warnings, acc: avgAcc, great: greatCount };
             }).filter(d => d.warnings > 0).sort((a, b) => b.warnings - a.warnings || b.acc - a.acc); 
         }
 
@@ -429,7 +458,7 @@
             const months = []; const warningsList = []; const accuraciesList = [];
             for (let m = 0; m < 12; m++) {
                 months.push(monthNames[m].substring(0, 3));
-                const { totalWarnings, totalAccuracySum, totalValidDays } = getTotals(m);
+                const { totalWarnings, totalAccuracySum, totalValidDays } = getTotals([m]);
                 warningsList.push(totalWarnings);
                 accuraciesList.push(totalValidDays > 0 ? (totalAccuracySum / totalValidDays) : 0);
             }
@@ -439,14 +468,16 @@
         // ============================================================
         // RENDER UI DASHBOARD (Sesuai Desain Awal Sebelumnya)
         // ============================================================
-        function renderDashboard(monthIdx) {
+        function renderDashboard() {
             if(personnel.length === 0) return ''; 
 
-            const month = monthNames[monthIdx];
-            const overall = getTotals(monthIdx);
-            const activeCount = statsData[monthIdx].filter(s => s.warnings > 0).length;
+            const monthsArray = getMonthsInPeriod();
+            const periodTitle = currentMode === 'month' ? monthNames[currentPeriodIdx] : quarterNames[currentPeriodIdx];
+            const overall = getTotals(monthsArray);
+            
+            const ranking = getRanking(monthsArray);
+            const activeCount = ranking.length;
             const avgAcc = overall.totalValidDays > 0 ? (overall.totalAccuracySum / overall.totalValidDays) : 0;
-            const ranking = getRanking(monthIdx);
 
             let html = '';
             
@@ -456,7 +487,7 @@
                     <div class="summary-card accent-red">
                         <div class="label">⚠️ Total AD Warning</div>
                         <div class="value">${overall.totalWarnings}</div>
-                        <div class="sub">Peringatan Dikeluarkan (${month})</div>
+                        <div class="sub">Peringatan Dikeluarkan (${periodTitle})</div>
                     </div>
                     <div class="summary-card accent-green">
                         <div class="label">🎯 Rata-Rata Akurasi</div>
@@ -485,7 +516,7 @@
                 <div class="card" style="margin-bottom: 24px;">
                     <div class="card-header">
                         <h2>📆 Tren AD Warning Harian</h2>
-                        <span class="chip">${month} ${currentYear}</span>
+                        <span class="chip">${periodTitle} ${currentYear}</span>
                     </div>
                     <div class="chart-container tall">
                         <canvas id="dailyTrendChart"></canvas>
@@ -502,7 +533,7 @@
                     <div class="chart-container tall"><canvas id="trendChart"></canvas></div>
                 </div>
                 <div class="card">
-                    <div class="card-header"><h2>🕸️ Akurasi per Forecaster (Top 5)</h2><span class="chip">${month}</span></div>
+                    <div class="card-header"><h2>🕸️ Akurasi per Forecaster (Top 5)</h2><span class="chip">${periodTitle}</span></div>
                     <div class="chart-container tall"><canvas id="radarChart"></canvas></div>
                 </div>
             </div>`;
@@ -510,11 +541,11 @@
             // BARIS 2: BAR (JUMLAH WARNING) + DOUGHNUT
             html += `<div class="grid-2">
                 <div class="card">
-                    <div class="card-header"><h2>📊 Total Peringatan per Forecaster</h2><span class="chip">${month}</span></div>
+                    <div class="card-header"><h2>📊 Total Peringatan per Forecaster</h2><span class="chip">${periodTitle}</span></div>
                     <div class="chart-container"><canvas id="barWarningChart"></canvas></div>
                 </div>
                 <div class="card">
-                    <div class="card-header"><h2>🍩 Distribusi Peringatan Diterbitkan</h2><span class="chip">${month}</span></div>
+                    <div class="card-header"><h2>🍩 Distribusi Peringatan Diterbitkan</h2><span class="chip">${periodTitle}</span></div>
                     <div class="chart-container"><canvas id="doughnutChart"></canvas></div>
                 </div>
             </div>`;
@@ -523,10 +554,10 @@
             const top8 = ranking.slice(0, 8);
             html += `<div class="grid-2-1">
                 <div class="card">
-                    <div class="card-header"><h2>🔥 Heatmap Akurasi (Top 8)</h2><span class="chip">${month}</span></div>
+                    <div class="card-header"><h2>🔥 Heatmap Akurasi (Top 8)</h2><span class="chip">${periodTitle}</span></div>
                     <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:12px;">`;
             
-            if(top8.length === 0) html += `<p style="grid-column: span 4; text-align:center; color:#999;">NIHIL Peringatan di bulan ini.</p>`;
+            if(top8.length === 0) html += `<p style="grid-column: span 4; text-align:center; color:#999;">NIHIL Peringatan di periode ini.</p>`;
             
             top8.forEach((d) => {
                 const pct = Math.round(d.acc);
@@ -544,7 +575,7 @@
             });
             html += `</div></div>
                 <div class="card">
-                    <div class="card-header"><h2>🏆 Peringkat Kinerja</h2><span class="chip">${month}</span></div>
+                    <div class="card-header"><h2>🏆 Peringkat Kinerja</h2><span class="chip">${periodTitle}</span></div>
                     <div style="max-height:280px; overflow-y:auto;">
                         <table class="rank-table">
                             <thead><tr><th>Rank</th><th>Forecaster</th><th>AD Warn</th><th>Akurasi</th></tr></thead>
@@ -565,25 +596,28 @@
         // RENDER CHARTS
         // ============================================================
         let chartInstances = {};
-        function renderAllCharts(monthIdx) {
+        function renderAllCharts() {
             if(personnel.length === 0) return;
             Object.values(chartInstances).forEach(ch => { if (ch) ch.destroy(); });
             chartInstances = {};
 
-            const ranking = getRanking(monthIdx);
+            const monthsArray = getMonthsInPeriod();
+            const ranking = getRanking(monthsArray);
             const trend = getMonthlyTrend();
             const top5 = ranking.slice(0, 5);
 
             // 0. CHART HARIAN
-            const daysInMonth = new Date(parseInt(currentYear), monthIdx + 1, 0).getDate();
             const dailyLabels = [], dailyWarnings = [], dailyAkurasi = [];
-
-            for (let d = 1; d <= daysInMonth; d++) {
-                dailyLabels.push(d); 
-                const stats = dailyStats[monthIdx][d];
-                dailyWarnings.push(stats.warnings);
-                dailyAkurasi.push(stats.validWarningDays > 0 ? (stats.accuracySum / stats.validWarningDays) : null);
-            }
+            monthsArray.forEach(mIdx => {
+                const daysInMonth = new Date(parseInt(currentYear), mIdx + 1, 0).getDate();
+                for (let d = 1; d <= daysInMonth; d++) {
+                    const labelStr = currentMode === 'quarter' ? `${d} ${monthNames[mIdx].substring(0,3)}` : `${d}`;
+                    dailyLabels.push(labelStr);
+                    const stats = (dailyStats[mIdx] && dailyStats[mIdx][d]) || { warnings: 0, accuracySum: 0, validWarningDays: 0 };
+                    dailyWarnings.push(stats.warnings);
+                    dailyAkurasi.push(stats.validWarningDays > 0 ? (stats.accuracySum / stats.validWarningDays) : null);
+                }
+            });
 
             if(document.getElementById('dailyTrendChart')) {
                 chartInstances.dailyTrend = new Chart(document.getElementById('dailyTrendChart'), {
@@ -593,7 +627,7 @@
                         datasets: [
                             {
                                 type: 'line', label: 'Rata-rata Akurasi (%)', data: dailyAkurasi, borderColor: '#e67e22', backgroundColor: 'transparent',
-                                tension: 0.3, borderWidth: 3, pointRadius: 4, yAxisID: 'y', spanGaps: true
+                                tension: 0.3, borderWidth: 3, pointRadius: currentMode === 'quarter' ? 2 : 4, yAxisID: 'y', spanGaps: true
                             },
                             {
                                 type: 'bar', label: 'Jumlah AD Warning', data: dailyWarnings, backgroundColor: '#e74c3c', borderRadius: 4, yAxisID: 'y1'
@@ -604,7 +638,8 @@
                         responsive: true, maintainAspectRatio: false,
                         scales: { 
                             y: { beginAtZero: true, max: 100, title: {display: true, text: 'Akurasi (%)'} },
-                            y1: { beginAtZero: true, position: 'right', grid: {display: false}, title: {display: true, text: 'Total Peringatan'}, ticks:{stepSize: 1} }
+                            y1: { beginAtZero: true, position: 'right', grid: {display: false}, title: {display: true, text: 'Total Peringatan'}, ticks:{stepSize: 1} },
+                            x: { ticks: { maxTicksLimit: currentMode === 'quarter' ? 15 : 31 } }
                         },
                         plugins: { tooltip: { mode: 'index', intersect: false } }
                     }
@@ -675,27 +710,42 @@
         // ============================================================
         // EVENT LISTENER & INIT
         // ============================================================
-        function setupMonthTabs() {
-            const tabsContainer = document.getElementById('monthTabs');
-            tabsContainer.innerHTML = '';
-            const selMonth = parseInt(document.getElementById('monthSelect').value);
-            monthNames.forEach((name, idx) => {
+        function setupPeriodControls() {
+            const periodSelect = document.getElementById('periodSelect');
+            const periodTabs = document.getElementById('periodTabs');
+            const periodLabel = document.getElementById('periodLabel');
+
+            periodSelect.innerHTML = '';
+            periodTabs.innerHTML = '';
+
+            const list = currentMode === 'month' ? monthNames : quarterNames;
+            const shortList = currentMode === 'month' ? monthNames.map(m => m.substring(0,3)) : quarterShortNames;
+            periodLabel.textContent = currentMode === 'month' ? '📅 Bulan' : '📅 Triwulan';
+
+            list.forEach((name, idx) => {
+                const opt = document.createElement('option');
+                opt.value = idx; opt.textContent = name;
+                if(idx === currentPeriodIdx) opt.selected = true;
+                periodSelect.appendChild(opt);
+
                 const btn = document.createElement('button');
-                btn.className = 'month-tab' + (idx === selMonth ? ' active' : '');
-                btn.textContent = name.substring(0, 3);
-                btn.addEventListener('click', function() {
-                    document.querySelectorAll('.month-tab').forEach(t => t.classList.remove('active'));
-                    this.classList.add('active');
-                    document.getElementById('monthSelect').value = idx;
-                    updateDashboard(idx);
-                });
-                tabsContainer.appendChild(btn);
+                btn.className = 'month-tab' + (idx === currentPeriodIdx ? ' active' : '');
+                btn.textContent = shortList[idx];
+                btn.addEventListener('click', () => selectPeriod(idx));
+                periodTabs.appendChild(btn);
             });
         }
 
-        function updateDashboard(monthIdx) {
-            document.getElementById('dashboardContent').innerHTML = renderDashboard(monthIdx);
-            setTimeout(() => { renderAllCharts(monthIdx); }, 80);
+        function selectPeriod(idx) {
+            currentPeriodIdx = idx;
+            document.getElementById('periodSelect').value = idx;
+            document.querySelectorAll('#periodTabs .month-tab').forEach((t, i) => t.classList.toggle('active', i === idx));
+            updateDashboard();
+        }
+
+        function updateDashboard() {
+            document.getElementById('dashboardContent').innerHTML = renderDashboard();
+            setTimeout(() => { renderAllCharts(); }, 80);
         }
 
         function init() {
@@ -704,17 +754,20 @@
             document.getElementById('currentDate').textContent = dateStr;
             document.getElementById('updateTime').textContent = `${dateStr}, ${now.toLocaleTimeString('id-ID', {hour:'2-digit', minute:'2-digit'})} WIB`;
 
-            document.getElementById('monthSelect').innerHTML = monthNames.map((m, i) => `<option value="${i}">${m}</option>`).join('');
-            document.getElementById('monthSelect').value = now.getMonth();
-
             document.getElementById('yearSelect').addEventListener('change', function() {
                 currentYear = this.value;
                 fetchSheetData(); 
             });
-            document.getElementById('monthSelect').addEventListener('change', function() {
-                const idx = parseInt(this.value);
-                document.querySelectorAll('.month-tab').forEach((tab, i) => tab.classList.toggle('active', i === idx));
-                updateDashboard(idx);
+
+            document.getElementById('modeSelect').addEventListener('change', function() {
+                currentMode = this.value;
+                currentPeriodIdx = currentMode === 'month' ? new Date().getMonth() : Math.floor(new Date().getMonth() / 3);
+                setupPeriodControls();
+                updateDashboard();
+            });
+
+            document.getElementById('periodSelect').addEventListener('change', function() {
+                selectPeriod(parseInt(this.value));
             });
 
             fetchSheetData();
