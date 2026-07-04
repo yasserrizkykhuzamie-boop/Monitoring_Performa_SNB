@@ -154,16 +154,15 @@
 
     <script>
         // ============================================================
-        // KONFIGURASI GOOGLE SPREADSHEET (MENGGUNAKAN METODE REFERENSI METAR)
+        // KONFIGURASI GOOGLE SPREADSHEET
         // ============================================================
         const PUBLISHED_ID = '2PACX-1vT4LcIB_-j2pfvt4BUNx4W6GKZiglF1UNo0-oR2yeKqjp7RY_004DF1GVmTxsuUiTx7oyBbrOsbx4Hp'; 
-        const GID = '0'; // GID untuk sheet db_sinoptik kamu
+        const GID = '0'; 
         const SHEET_NAME = 'db_sinoptik';
 
         let personnel = [];
         let availableYears = [];
         let utcData = [];    
-        let delayData = [];  
         let statsData = [];  
         let dailyStats = []; 
         let currentYear = new Date().getFullYear().toString();
@@ -173,11 +172,8 @@
         const monthNames = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
         const quarterNames = ['Triwulan I (Q1)', 'Triwulan II (Q2)', 'Triwulan III (Q3)', 'Triwulan IV (Q4)'];
         const quarterShortNames = ['TW I', 'TW II', 'TW III', 'TW IV'];
-        
         const utcLabels = ['00:00', '03:00', '06:00', '09:00', '12:00', '15:00', '18:00', '21:00'];
-        const delayLabels = ['-5..-1 mnt', 'Tepat (0 mnt)', '+1..+5 mnt', '+6..+10 mnt', '+11..+30 mnt', '+31..+60 mnt', '>+60 mnt'];
 
-        // FUNGSI CSV YANG SAMA PERSIS DENGAN REFERENSI METAR
         function csvToArray(strData) {
             const objPattern = new RegExp(("(\\,|\\r?\\n|\\r|^)(?:\"([^\"]*(?:\"\"[^\"]*)*)\"|([^\\,\\r\\n]*))"), "gi");
             let arrData = [[]];
@@ -193,7 +189,6 @@
             return arrData;
         }
 
-        // FUNGSI FETCH YANG SAMA PERSIS DENGAN REFERENSI METAR YANG BERHASIL
         async function fetchSheetData() {
             document.getElementById('loadingOverlay').style.display = 'flex';
             document.getElementById('uiMessageArea').innerHTML = ''; 
@@ -257,7 +252,25 @@
             }
         }
 
-        // PEMBACAAN STRUKTUR KOLOM DENGAN GAYA PENDEKATAN METAR
+        // ============================================================
+        // FUNGSI KONVERSI ANGKA PERSENTASE ANTI-ERROR
+        // ============================================================
+        function parsePercentOrDecimal(rawStr) {
+            if (!rawStr) return 0;
+            // Ubah tanda koma menjadi titik desimal (misal "98,5%" menjadi "98.5%")
+            let cleanStr = rawStr.toString().replace(/%/g, '').replace(/,/g, '.').trim();
+            let val = parseFloat(cleanStr);
+            if (isNaN(val)) return 0;
+            // Jika angka > 1 (contoh: 98.5 atau 100), bagi 100 agar bernilai proporsi desimal 0.0 - 1.0
+            if (val > 1) {
+                return val / 100;
+            }
+            return val; // Jika sudah dalam format desimal (contoh: 0.98 atau 1), biarkan
+        }
+
+        // ============================================================
+        // PEMBACAAN DATA: KETEPATAN MURNI DARI KOLOM D (INDEKS 3)
+        // ============================================================
         function processCSVData(csvText) {
             const rawData = [];
             const observersSet = new Set();
@@ -268,11 +281,11 @@
 
             for (let i = 1; i < rows.length; i++) {
                 const cells = rows[i];
-                // Memastikan baris memiliki cukup kolom (A hingga G minimal 7 kolom)
+                // Pastikan baris memiliki minimal kolom A sampai G (indeks 0 sampai 6)
                 if (cells.length < 7 || !cells[0] || !cells[6]) continue; 
 
                 try {
-                    // 1. PARSE TANGGAL (KOLOM A / INDEKS 0)
+                    // 1. TANGGAL (Kolom A / Indeks 0)
                     let dateStr = cells[0].replace(/["']/g, '').trim().split(' ')[0]; 
                     let dateObj = new Date(dateStr);
                     
@@ -303,7 +316,7 @@
                     const day = dateObj.getDate();
                     yearsSet.add(year);
 
-                    // 2. PARSE JAM UTC (KOLOM B / INDEKS 1)
+                    // 2. JAM UTC (Kolom B / Indeks 1)
                     let utcStr = (cells[1] || '').replace(/["']/g, '').trim(); 
                     let jamAngka = 0;
                     if (utcStr.includes(':')) jamAngka = parseInt(utcStr.split(':')[0]);
@@ -319,34 +332,19 @@
                     else if (jamAngka === 18) utcSlot = 6;
                     else if (jamAngka === 21) utcSlot = 7;
 
-                    // 3. PARSE OBSERVER (KOLOM G / INDEKS 6)
+                    // 3. OBSERVER (Kolom G / Indeks 6)
                     let observer = (cells[6] || '').replace(/["']/g, '').trim().toUpperCase();
                     if (!observer) continue;
                     observersSet.add(observer);
 
-                    // 4. PARSE METRIK AKURASI & KETEPATAN (KOLOM D & F / INDEKS 3 & 5)
-                    let ketepatanStr = cells[3] ? cells[3].replace(/[^0-9.]/g, '') : '0';
-                    let ketepatan = parseFloat(ketepatanStr);
-                    if (ketepatan > 1 && ketepatan <= 100) ketepatan /= 100;
-                    if (isNaN(ketepatan)) ketepatan = 0;
+                    // 4. NILAI KETEPATAN WAKTU -> MUTLAK DARI KOLOM D (Indeks 3)
+                    // Kolom E (Indeks 4) sengaja TIDAK DIGUNAKAN
+                    let ketepatan = parsePercentOrDecimal(cells[3]);
 
-                    let akurasiStr = cells[5] ? cells[5].replace(/[^0-9.]/g, '') : '0';
-                    let akurasiSandi = parseFloat(akurasiStr);
-                    if (akurasiSandi > 1 && akurasiSandi <= 100) akurasiSandi /= 100;
-                    if (isNaN(akurasiSandi)) akurasiSandi = 0;
+                    // 5. AKURASI PENYANDIAN -> DARI KOLOM F (Indeks 5)
+                    let akurasiSandi = parsePercentOrDecimal(cells[5]);
 
-                    // 5. PARSE WAKTU PENGIRIMAN (KOLOM E / INDEKS 4)
-                    let delayVal = parseInt((cells[4] || '').replace(/[^0-9.-]/g, '')) || 0;
-                    let delaySlot = 1; 
-                    if (delayVal < 0) delaySlot = 0;
-                    else if (delayVal === 0) delaySlot = 1;
-                    else if (delayVal >= 1 && delayVal <= 5) delaySlot = 2;
-                    else if (delayVal >= 6 && delayVal <= 10) delaySlot = 3;
-                    else if (delayVal >= 11 && delayVal <= 30) delaySlot = 4;
-                    else if (delayVal >= 31 && delayVal <= 60) delaySlot = 5;
-                    else if (delayVal > 60) delaySlot = 6;
-
-                    rawData.push({ year, month, day, utcSlot, delaySlot, akurasiSandi, ketepatan, observer });
+                    rawData.push({ year, month, day, utcSlot, akurasiSandi, ketepatan, observer });
 
                 } catch (e) {
                     console.warn("Parse error at row " + i, cells);
@@ -375,8 +373,6 @@
                     const pIdx = personnel.indexOf(d.observer);
                     if (pIdx !== -1) {
                         utcData[d.month][pIdx][d.utcSlot] += 1;
-                        delayData[d.month][pIdx][d.delaySlot] += 1;
-
                         statsData[d.month][pIdx].total += 1;
                         statsData[d.month][pIdx].akurasiSandiSum += d.akurasiSandi;
                         statsData[d.month][pIdx].ketepatanSum += d.ketepatan;
@@ -406,21 +402,17 @@
 
         function buildEmptyDataArrays() {
             utcData = [];
-            delayData = [];
             statsData = [];
             dailyStats = [];
 
             for(let m = 0; m < 12; m++) {
                 let monthUtc = [];
-                let monthDelay = [];
                 let monthStats = [];
                 for(let p = 0; p < personnel.length; p++) {
                     monthUtc.push(new Array(8).fill(0));
-                    monthDelay.push(new Array(7).fill(0));
                     monthStats.push({ total: 0, akurasiSandiSum: 0, ketepatanSum: 0 });
                 }
                 utcData.push(monthUtc);
-                delayData.push(monthDelay);
                 statsData.push(monthStats);
 
                 let days = [];
@@ -444,7 +436,7 @@
             monthsArray.forEach(mIdx => {
                 totalDays += new Date(parseInt(year), mIdx + 1, 0).getDate();
             });
-            return totalDays * 8; // Standar SYNOP: 8 kali sehari
+            return totalDays * 8; // Standar SYNOP: 8 jam pengamatan per hari
         }
 
         function getTotals(monthsArray) {
@@ -463,19 +455,15 @@
         function getRanking(monthsArray) {
             return personnel.map((name, i) => {
                 let total = 0, akurasiSandiSum = 0, ketepatanSum = 0;
-                let delayInd = new Array(7).fill(0);
                 monthsArray.forEach(mIdx => {
                     const s = (statsData[mIdx] && statsData[mIdx][i]) || { total: 0, akurasiSandiSum: 0, ketepatanSum: 0 };
                     total += s.total;
                     akurasiSandiSum += s.akurasiSandiSum;
                     ketepatanSum += s.ketepatanSum;
-                    if(delayData[mIdx] && delayData[mIdx][i]) {
-                        delayData[mIdx][i].forEach((val, slot) => delayInd[slot] += val);
-                    }
                 });
                 const accSandi = total > 0 ? (akurasiSandiSum / total * 100) : 0;
                 const tepatWaktu = total > 0 ? (ketepatanSum / total * 100) : 0;
-                return { name, total, accSandi, tepatWaktu, delayInd };
+                return { name, total, accSandi, tepatWaktu };
             }).filter(d => d.total > 0).sort((a, b) => b.total - a.total || b.accSandi - a.accSandi);
         }
 
@@ -525,7 +513,7 @@
                     <div class="summary-card accent-purple">
                         <div class="label">⏱️ Nilai Ketepatan Waktu</div>
                         <div class="value">${avgTepat.toFixed(1)}%</div>
-                        <div class="sub">Kecepatan pengiriman berita</div>
+                        <div class="sub">Diambil dari Kolom D</div>
                     </div>
                     <div class="summary-card accent-orange">
                         <div class="label">👥 Observer Aktif</div>
@@ -566,8 +554,8 @@
                 </div>
             </div>`;
 
-            // BARIS 2: POLAR + STACKED + DOUGHNUT
-            html += `<div class="grid-3">
+            // BARIS 2: POLAR + STACKED
+            html += `<div class="grid-2">
                 <div class="card">
                     <div class="card-header"><h2>🍩 Proporsi Laporan Observer</h2><span class="chip">${periodTitle}</span></div>
                     <div class="chart-container"><canvas id="polarChart"></canvas></div>
@@ -575,10 +563,6 @@
                 <div class="card">
                     <div class="card-header"><h2>📊 Jam UTC Pengamatan (Top 5)</h2><span class="chip">${periodTitle}</span></div>
                     <div class="chart-container"><canvas id="stackedChart"></canvas></div>
-                </div>
-                <div class="card">
-                    <div class="card-header"><h2>📉 Distribusi Waktu Kirim</h2><span class="chip">${periodTitle}</span></div>
-                    <div class="chart-container"><canvas id="doughnutChart"></canvas></div>
                 </div>
             </div>`;
 
@@ -700,12 +684,10 @@
             // 2. RADAR
             if(document.getElementById('radarChart') && top5.length > 0) {
                 const radarData = top5.map(d => {
-                    const tepat0 = d.total > 0 ? (d.delayInd[1] / d.total * 100) : 0;
-                    const toleransi = d.total > 0 ? ((d.delayInd[1] + d.delayInd[2] + d.delayInd[3]) / d.total * 100) : 0;
-                    return [Math.min(100, d.total / (currentMode === 'quarter' ? 1.5 : 0.5)), d.accSandi, d.tepatWaktu, tepat0, toleransi];
+                    return [Math.min(100, d.total / (currentMode === 'quarter' ? 1.5 : 0.5)), d.accSandi, d.tepatWaktu];
                 });
                 chartInstances.radar = new Chart(document.getElementById('radarChart'), {
-                    type: 'radar', data: { labels: ['Volume Laporan', 'Akurasi Sandi', 'Nilai Ketepatan', 'Tepat 0 Mnt', 'Toleransi <=10 Mnt'],
+                    type: 'radar', data: { labels: ['Volume Laporan', 'Akurasi Sandi', 'Ketepatan Waktu'],
                         datasets: top5.map((d, i) => ({ label: d.name, data: radarData[i], borderColor: `hsl(${i * 60 + 210}, 70%, 50%)`, backgroundColor: `hsla(${i * 60 + 210}, 70%, 50%, 0.15)` }))
                     }, options: { responsive: true, maintainAspectRatio: false, scales: { r: { beginAtZero: true, max: 100 } } }
                 });
@@ -736,21 +718,6 @@
                 chartInstances.stacked = new Chart(document.getElementById('stackedChart'), {
                     type: 'bar', data: { labels: utcLabels, datasets: top5Names.map((name, i) => ({ label: name.split(' ')[0], data: aggregatedUtc[i], backgroundColor: `hsl(${i * 60 + 200}, 70%, 55%)` })) },
                     options: { responsive: true, maintainAspectRatio: false, scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true } } }
-                });
-            }
-
-            // 5. DOUGHNUT (Distribusi Waktu Kirim)
-            if(document.getElementById('doughnutChart')) {
-                const aggregatedDelay = new Array(7).fill(0);
-                ranking.forEach(d => {
-                    d.delayInd.forEach((val, slot) => aggregatedDelay[slot] += val);
-                });
-                chartInstances.doughnut = new Chart(document.getElementById('doughnutChart'), {
-                    type: 'doughnut', data: { 
-                        labels: delayLabels, 
-                        datasets: [{ data: aggregatedDelay, backgroundColor: ['#3498db', '#2ecc71', '#f1c40f', '#e67e22', '#e74c3c', '#9b59b6', '#7f8c8d'] }] 
-                    },
-                    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: {boxWidth: 10, font: {size: 10}} } } }
                 });
             }
         }
