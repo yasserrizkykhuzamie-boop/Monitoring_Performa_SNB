@@ -157,12 +157,9 @@
         // KONFIGURASI GOOGLE SPREADSHEET (SHEET: db_synop)
         // ============================================================
         const PUBLISHED_ID = '2PACX-1vT4LcIB_-j2pfvt4BUNx4W6GKZiglF1UNo0-oR2yeKqjp7RY_004DF1GVmTxsuUiTx7oyBbrOsbx4Hp'; 
-        const GID = '0'; // Sesuaikan jika ada GID khusus tab db_synop
+        const GID = '0'; 
         const SHEET_NAME = 'db_synop'; 
 
-        // ============================================================
-        // STRUKTUR DATA GLOBAL
-        // ============================================================
         let personnel = [];
         let availableYears = [];
         let utcData = [];    
@@ -170,20 +167,16 @@
         let statsData = [];  
         let dailyStats = []; 
         let currentYear = new Date().getFullYear().toString();
-        let currentMode = 'month'; // 'month' atau 'quarter'
+        let currentMode = 'month'; 
         let currentPeriodIdx = new Date().getMonth();
 
         const monthNames = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
         const quarterNames = ['Triwulan I (Q1)', 'Triwulan II (Q2)', 'Triwulan III (Q3)', 'Triwulan IV (Q4)'];
         const quarterShortNames = ['TW I', 'TW II', 'TW III', 'TW IV'];
         
-        // 8 Jam Pengamatan SYNOP Standar
         const utcLabels = ['00:00', '03:00', '06:00', '09:00', '12:00', '15:00', '18:00', '21:00'];
         const delayLabels = ['-5..-1 mnt', 'Tepat (0 mnt)', '+1..+5 mnt', '+6..+10 mnt', '+11..+30 mnt', '+31..+60 mnt', '>+60 mnt'];
 
-        // ============================================================
-        // CSV PARSER HELPER (AUTO DELIMITER KOMA / TITIK KOMA / TAB)
-        // ============================================================
         function csvToArray(strData) {
             strData = strData.trim();
             const firstLine = strData.split(/\r?\n/)[0] || '';
@@ -207,9 +200,6 @@
             return arrData;
         }
 
-        // ============================================================
-        // FETCH & PARSE DATA
-        // ============================================================
         async function fetchSheetData() {
             document.getElementById('loadingOverlay').style.display = 'flex';
             document.getElementById('uiMessageArea').innerHTML = ''; 
@@ -271,9 +261,7 @@
         }
 
         // ============================================================
-        // PARSING DISESUAIKAN STRUKTUR db_synop
-        // 0:TIMESTAMP, 1:JAM UTC, 2:Akurasi Pengiriman, 3:Nilai Ketepatan,
-        // 4:Waktu Pengiriman (mnt), 5:Akurasi Penyandian, 6:OBSERVER
+        // SISTEM AUTO-MAPPING KOLOM (ANTI PERGESERAN)
         // ============================================================
         function processCSVData(csvText) {
             const rawData = [];
@@ -283,13 +271,29 @@
             const rows = csvToArray(csvText.trim());
             if (rows.length < 2) throw new Error('Data sheet kosong.');
 
+            // Baca Header untuk menentukan indeks kolom secara dinamis
+            const headers = rows[0].map(h => (h || '').toString().toUpperCase().trim());
+            
+            const findIdx = (keywords, fallback) => {
+                const idx = headers.findIndex(h => keywords.some(k => h.includes(k)));
+                return idx !== -1 ? idx : fallback;
+            };
+
+            const idxDate = findIdx(['TIMESTAMP', 'TANGGAL', 'DATE'], 0);
+            const idxUtc = findIdx(['JAM UTC', 'UTC', 'JAM'], 1);
+            const idxAccKirim = findIdx(['AKURASI PENGIRIMAN'], 2);
+            const idxKetepatan = findIdx(['NILAI KETEPATAN', 'KETEPATAN'], 3);
+            const idxWaktu = findIdx(['WAKTU PENGIRIMAN', 'WAKTU', 'DELAY', 'MENIT'], 4);
+            const idxAccSandi = findIdx(['AKURASI PENYANDIAN', 'PENYANDIAN', 'SANDI'], 5);
+            const idxObserver = findIdx(['OBSERVER', 'PETUGAS', 'NAMA', 'FORECASTER'], 6);
+
             for (let i = 1; i < rows.length; i++) {
                 const cells = rows[i];
-                if (cells.length < 7 || !cells[0] || !cells[6]) continue; 
+                if (!cells[idxDate] || !cells[idxObserver]) continue; 
 
                 try {
                     // 1. PARSE TANGGAL
-                    let dateStr = cells[0].replace(/["']/g, '').trim().split(' ')[0]; 
+                    let dateStr = cells[idxDate].replace(/["']/g, '').trim().split(' ')[0]; 
                     let dateObj = new Date(dateStr);
                     
                     if (dateStr.includes('/')) {
@@ -321,7 +325,7 @@
                     yearsSet.add(year);
 
                     // 2. PARSE JAM UTC (Sandi SYNOP: 00, 03, 06, 09, 12, 15, 18, 21)
-                    let utcStr = cells[1].replace(/["']/g, '').trim(); 
+                    let utcStr = (cells[idxUtc] || '').replace(/["']/g, '').trim(); 
                     let jamAngka = 0;
                     if (utcStr.includes(':')) jamAngka = parseInt(utcStr.split(':')[0]);
                     else if (!isNaN(parseInt(utcStr))) jamAngka = parseInt(utcStr); 
@@ -336,18 +340,15 @@
                     else if (jamAngka === 18) utcSlot = 6;
                     else if (jamAngka === 21) utcSlot = 7;
 
-                    // 3. PARSE AKURASI PENGIRIMAN & PENYANDIAN
-                    let akurasiKirim = parseFloat(cells[2].replace(/[^0-9.]/g, '')) || 0;
-                    if (akurasiKirim > 1 && akurasiKirim <= 100) akurasiKirim /= 100;
-                    
-                    let ketepatan = parseFloat(cells[3].replace(/[^0-9.]/g, '')) || 0;
+                    // 3. PARSE METRIK AKURASI & KETEPATAN
+                    let ketepatan = parseFloat((cells[idxKetepatan] || '').replace(/[^0-9.]/g, '')) || 0;
                     if (ketepatan > 1 && ketepatan <= 100) ketepatan /= 100;
 
-                    let akurasiSandi = parseFloat(cells[5].replace(/[^0-9.]/g, '')) || 0;
+                    let akurasiSandi = parseFloat((cells[idxAccSandi] || '').replace(/[^0-9.]/g, '')) || 0;
                     if (akurasiSandi > 1 && akurasiSandi <= 100) akurasiSandi /= 100;
 
                     // 4. PARSE WAKTU PENGIRIMAN (DELAY MENIT)
-                    let delayVal = parseInt(cells[4].replace(/[^0-9.-]/g, '')) || 0;
+                    let delayVal = parseInt((cells[idxWaktu] || '').replace(/[^0-9.-]/g, '')) || 0;
                     let delaySlot = 1; 
                     if (delayVal < 0) delaySlot = 0;
                     else if (delayVal === 0) delaySlot = 1;
@@ -357,8 +358,8 @@
                     else if (delayVal >= 31 && delayVal <= 60) delaySlot = 5;
                     else if (delayVal > 60) delaySlot = 6;
 
-                    // 5. PARSE OBSERVER (Kolom ke-7)
-                    let observer = cells[6].replace(/["']/g, '').trim().toUpperCase();
+                    // 5. PARSE OBSERVER
+                    let observer = (cells[idxObserver] || '').replace(/["']/g, '').trim().toUpperCase();
                     if (!observer) continue;
                     observersSet.add(observer);
 
@@ -460,7 +461,7 @@
             monthsArray.forEach(mIdx => {
                 totalDays += new Date(parseInt(year), mIdx + 1, 0).getDate();
             });
-            return totalDays * 8; // SYNOP dilakukan 8 kali sehari per stasiun
+            return totalDays * 8; // SYNOP standar dilakukan 8 kali sehari
         }
 
         function getTotals(monthsArray) {
