@@ -154,11 +154,11 @@
 
     <script>
         // ============================================================
-        // KONFIGURASI GOOGLE SPREADSHEET (TERBARU)
+        // KONFIGURASI GOOGLE SPREADSHEET (MENGGUNAKAN METODE REFERENSI METAR)
         // ============================================================
         const PUBLISHED_ID = '2PACX-1vT4LcIB_-j2pfvt4BUNx4W6GKZiglF1UNo0-oR2yeKqjp7RY_004DF1GVmTxsuUiTx7oyBbrOsbx4Hp'; 
-        const GID = '0'; 
-        const SHEET_NAME = 'db_sinoptik'; 
+        const GID = '0'; // GID untuk sheet db_sinoptik kamu
+        const SHEET_NAME = 'db_sinoptik';
 
         let personnel = [];
         let availableYears = [];
@@ -177,63 +177,59 @@
         const utcLabels = ['00:00', '03:00', '06:00', '09:00', '12:00', '15:00', '18:00', '21:00'];
         const delayLabels = ['-5..-1 mnt', 'Tepat (0 mnt)', '+1..+5 mnt', '+6..+10 mnt', '+11..+30 mnt', '+31..+60 mnt', '>+60 mnt'];
 
+        // FUNGSI CSV YANG SAMA PERSIS DENGAN REFERENSI METAR
         function csvToArray(strData) {
-            strData = strData.trim();
-            const firstLine = strData.split(/\r?\n/)[0] || '';
-            const countComma = (firstLine.match(/,/g) || []).length;
-            const countSemi = (firstLine.match(/;/g) || []).length;
-            const countTab = (firstLine.match(/\t/g) || []).length;
-            
-            let delimiter = ",";
-            if (countSemi > countComma && countSemi >= countTab) delimiter = ";";
-            else if (countTab > countComma && countTab > countSemi) delimiter = "\t";
-
-            const objPattern = new RegExp(("(\\" + delimiter + "|\\r?\\n|\\r|^)(?:\"([^\"]*(?:\"\"[^\"]*)*)\"|([^\"\\" + delimiter + "\\r\\n]*))"), "gi");
+            const objPattern = new RegExp(("(\\,|\\r?\\n|\\r|^)(?:\"([^\"]*(?:\"\"[^\"]*)*)\"|([^\\,\\r\\n]*))"), "gi");
             let arrData = [[]];
             let arrMatches = null;
             while (arrMatches = objPattern.exec(strData)) {
                 let strMatchedDelimiter = arrMatches[1];
-                if (strMatchedDelimiter.length && strMatchedDelimiter !== delimiter) arrData.push([]);
-                let strMatchedValue = arrMatches[2] ? arrMatches[2].replace(new RegExp("\"\"", "g"), "\"") : arrMatches[3];
+                if (strMatchedDelimiter.length && strMatchedDelimiter !== ",") arrData.push([]);
+                let strMatchedValue;
+                if (arrMatches[2]) strMatchedValue = arrMatches[2].replace(new RegExp("\"\"", "g"), "\"");
+                else strMatchedValue = arrMatches[3];
                 arrData[arrData.length - 1].push(strMatchedValue);
             }
             return arrData;
         }
 
+        // FUNGSI FETCH YANG SAMA PERSIS DENGAN REFERENSI METAR YANG BERHASIL
         async function fetchSheetData() {
             document.getElementById('loadingOverlay').style.display = 'flex';
             document.getElementById('uiMessageArea').innerHTML = ''; 
             document.getElementById('dashboardContent').innerHTML = ''; 
             
-            // Menggunakan parameter gid=0 agar pasti mengarah tepat ke sheet kamu dalam format CSV
             const targetUrl = `https://docs.google.com/spreadsheets/d/e/${PUBLISHED_ID}/pub?gid=${GID}&single=true&output=csv`;
             let csvText = null;
             
-            // Mekanisme Multi-Proxy Anti-Gagal
-            const fetchMethods = [
-                targetUrl,                                                               // 1. Direct fetch
-                `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`,                // 2. CORS Proxy 1
-                `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`,   // 3. CORS Proxy 2
-                `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(targetUrl)}` // 4. CORS Proxy 3
-            ];
-
-            for (let url of fetchMethods) {
+            try {
                 try {
-                    const res = await fetch(url);
-                    if (res.ok) {
-                        const text = await res.text();
-                        if (text && !text.trim().startsWith('<html') && !text.trim().startsWith('<!DOCTYPE') && text.trim().length > 10) {
+                    const directResponse = await fetch(targetUrl);
+                    if (directResponse.ok) {
+                        const text = await directResponse.text();
+                        if (!text.trim().startsWith('<html') && !text.trim().startsWith('<!DOCTYPE') && text.trim().length > 10) {
                             csvText = text;
-                            break;
                         }
                     }
                 } catch (err) {
-                    console.warn(`Mencoba jalur koneksi berikutnya...`);
+                    console.warn("Direct fetch diblokir. Menggunakan Proxy...");
                 }
-            }
 
-            try {
-                if (!csvText) throw new Error('Gagal menarik data. Pastikan spreadsheet dipublikasikan ke web dalam format Nilai yang dipisahkan koma (.csv).');
+                if (!csvText) {
+                    const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`;
+                    const proxyResponse = await fetch(proxyUrl);
+                    if (proxyResponse.ok) {
+                        const data = await proxyResponse.json();
+                        if (data && data.contents) {
+                            const text = data.contents;
+                            if (!text.trim().startsWith('<html') && !text.trim().startsWith('<!DOCTYPE') && text.trim().length > 10) {
+                                csvText = text;
+                            }
+                        }
+                    }
+                }
+
+                if (!csvText) throw new Error('Gagal menarik data dari file lokal. Pastikan terhubung internet.');
 
                 processCSVData(csvText);
                 
@@ -261,9 +257,7 @@
             }
         }
 
-        // ============================================================
-        // SISTEM AUTO-MAPPING KOLOM (A - G)
-        // ============================================================
+        // PEMBACAAN STRUKTUR KOLOM DENGAN GAYA PENDEKATAN METAR
         function processCSVData(csvText) {
             const rawData = [];
             const observersSet = new Set();
@@ -272,28 +266,14 @@
             const rows = csvToArray(csvText.trim());
             if (rows.length < 2) throw new Error('Data sheet kosong.');
 
-            const headers = rows[0].map(h => (h || '').toString().toUpperCase().trim());
-            
-            const findIdx = (keywords, fallback) => {
-                const idx = headers.findIndex(h => keywords.some(k => h.includes(k)));
-                return idx !== -1 ? idx : fallback;
-            };
-
-            const idxDate      = findIdx(['TIMESTAMP', 'TANGGAL', 'DATE'], 0);                          // Kolom A
-            const idxUtc       = findIdx(['JAM UTC', 'UTC', 'JAM'], 1);                                 // Kolom B
-            const idxAccKirim  = findIdx(['AKURASI PENGIRIMAR', 'AKURASI PENGIRIMAN', 'PENGIRIMAR'], 2);  // Kolom C
-            const idxKetepatan = findIdx(['NILAI KETEPATAN', 'KETEPATAN'], 3);                          // Kolom D
-            const idxWaktu     = findIdx(['WAKTU PENGIRIMAN', 'WAKTU', 'DELAY'], 4);                    // Kolom E
-            const idxAccSandi  = findIdx(['AKURASI PENYANDIAN', 'PENYANDIAN', 'SANDI'], 5);             // Kolom F
-            const idxObserver  = findIdx(['OBSERVER', 'PETUGAS', 'NAMA', 'FORECASTER'], 6);             // Kolom G
-
             for (let i = 1; i < rows.length; i++) {
                 const cells = rows[i];
-                if (!cells[idxDate] || !cells[idxObserver]) continue; 
+                // Memastikan baris memiliki cukup kolom (A hingga G minimal 7 kolom)
+                if (cells.length < 7 || !cells[0] || !cells[6]) continue; 
 
                 try {
-                    // 1. PARSE TANGGAL
-                    let dateStr = cells[idxDate].replace(/["']/g, '').trim().split(' ')[0]; 
+                    // 1. PARSE TANGGAL (KOLOM A / INDEKS 0)
+                    let dateStr = cells[0].replace(/["']/g, '').trim().split(' ')[0]; 
                     let dateObj = new Date(dateStr);
                     
                     if (dateStr.includes('/')) {
@@ -302,7 +282,6 @@
                             let p0 = parseInt(parts[0]);
                             let p1 = parseInt(parts[1]);
                             let p2 = parseInt(parts[2]);
-                            
                             let y = p2 > 1000 ? p2 : (p0 > 1000 ? p0 : new Date().getFullYear());
                             let m = p1;
                             let d = p0;
@@ -324,8 +303,8 @@
                     const day = dateObj.getDate();
                     yearsSet.add(year);
 
-                    // 2. PARSE JAM UTC (00, 03, 06, 09, 12, 15, 18, 21)
-                    let utcStr = (cells[idxUtc] || '').replace(/["']/g, '').trim(); 
+                    // 2. PARSE JAM UTC (KOLOM B / INDEKS 1)
+                    let utcStr = (cells[1] || '').replace(/["']/g, '').trim(); 
                     let jamAngka = 0;
                     if (utcStr.includes(':')) jamAngka = parseInt(utcStr.split(':')[0]);
                     else if (!isNaN(parseInt(utcStr))) jamAngka = parseInt(utcStr); 
@@ -340,15 +319,24 @@
                     else if (jamAngka === 18) utcSlot = 6;
                     else if (jamAngka === 21) utcSlot = 7;
 
-                    // 3. PARSE METRIK AKURASI & KETEPATAN
-                    let ketepatan = parseFloat((cells[idxKetepatan] || '').replace(/[^0-9.]/g, '')) || 0;
+                    // 3. PARSE OBSERVER (KOLOM G / INDEKS 6)
+                    let observer = (cells[6] || '').replace(/["']/g, '').trim().toUpperCase();
+                    if (!observer) continue;
+                    observersSet.add(observer);
+
+                    // 4. PARSE METRIK AKURASI & KETEPATAN (KOLOM D & F / INDEKS 3 & 5)
+                    let ketepatanStr = cells[3] ? cells[3].replace(/[^0-9.]/g, '') : '0';
+                    let ketepatan = parseFloat(ketepatanStr);
                     if (ketepatan > 1 && ketepatan <= 100) ketepatan /= 100;
+                    if (isNaN(ketepatan)) ketepatan = 0;
 
-                    let akurasiSandi = parseFloat((cells[idxAccSandi] || '').replace(/[^0-9.]/g, '')) || 0;
+                    let akurasiStr = cells[5] ? cells[5].replace(/[^0-9.]/g, '') : '0';
+                    let akurasiSandi = parseFloat(akurasiStr);
                     if (akurasiSandi > 1 && akurasiSandi <= 100) akurasiSandi /= 100;
+                    if (isNaN(akurasiSandi)) akurasiSandi = 0;
 
-                    // 4. PARSE WAKTU PENGIRIMAN (DELAY MENIT)
-                    let delayVal = parseInt((cells[idxWaktu] || '').replace(/[^0-9.-]/g, '')) || 0;
+                    // 5. PARSE WAKTU PENGIRIMAN (KOLOM E / INDEKS 4)
+                    let delayVal = parseInt((cells[4] || '').replace(/[^0-9.-]/g, '')) || 0;
                     let delaySlot = 1; 
                     if (delayVal < 0) delaySlot = 0;
                     else if (delayVal === 0) delaySlot = 1;
@@ -357,11 +345,6 @@
                     else if (delayVal >= 11 && delayVal <= 30) delaySlot = 4;
                     else if (delayVal >= 31 && delayVal <= 60) delaySlot = 5;
                     else if (delayVal > 60) delaySlot = 6;
-
-                    // 5. PARSE OBSERVER
-                    let observer = (cells[idxObserver] || '').replace(/["']/g, '').trim().toUpperCase();
-                    if (!observer) continue;
-                    observersSet.add(observer);
 
                     rawData.push({ year, month, day, utcSlot, delaySlot, akurasiSandi, ketepatan, observer });
 
@@ -461,7 +444,7 @@
             monthsArray.forEach(mIdx => {
                 totalDays += new Date(parseInt(year), mIdx + 1, 0).getDate();
             });
-            return totalDays * 8; 
+            return totalDays * 8; // Standar SYNOP: 8 kali sehari
         }
 
         function getTotals(monthsArray) {
