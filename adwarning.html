@@ -104,7 +104,6 @@
     </div>
 
     <div class="dashboard">
-        <!-- ===== HEADER ===== -->
         <header class="header">
             <div class="header-left">
                 <div class="header-icon">⚠️</div>
@@ -124,7 +123,6 @@
             </div>
         </header>
 
-        <!-- ===== FILTER ===== -->
         <div class="filter-bar">
             <div class="filter-group">
                 <label for="yearSelect">📆 Tahun</label>
@@ -140,7 +138,6 @@
         <div id="uiMessageArea"></div>
         <div id="dashboardContent"></div>
 
-        <!-- ===== FOOTER ===== -->
         <div class="footer">
             <strong>Dashboard AD Warning AMP</strong> &middot; Data Live Google Sheets &middot; Diperbarui <span id="updateTime"></span>
         </div>
@@ -152,14 +149,13 @@
         // ============================================================
         const PUBLISHED_ID = '2PACX-1vT4LcIB_-j2pfvt4BUNx4W6GKZiglF1UNo0-oR2yeKqjp7RY_004DF1GVmTxsuUiTx7oyBbrOsbx4Hp'; 
         const GID = '1461511385'; // <--- GID KHUSUS SHEET db_adwarning
-        const SHEET_NAME = 'db_adwarning'; 
 
         // ============================================================
         // STRUKTUR DATA GLOBAL
         // ============================================================
         let personnel = [];
         let availableYears = [];
-        let statsData = []; // [month][person] = { warnings: 0, accuracySum: 0, validWarningDays: 0, greatCount: 0 }
+        let statsData = []; // [month][person] = { warnings: 0, accuracySum: 0, validWarningDays: 0 }
         let dailyStats = []; // [month][day] = { warnings: 0, accuracySum: 0, validWarningDays: 0 }
         let currentYear = new Date().getFullYear().toString();
 
@@ -221,7 +217,7 @@
                     }
                 }
 
-                if (!csvText) throw new Error('Gagal menarik data. Periksa pengaturan Publish to Web untuk sheet db_adwarning.');
+                if (!csvText) throw new Error('Gagal menarik data. Periksa pengaturan Publish to Web untuk sheet Anda.');
 
                 processCSVData(csvText);
                 
@@ -249,6 +245,10 @@
             }
         }
 
+        // ============================================================
+        // DATA PARSING YANG DISESUAIKAN DENGAN GAMBAR USER
+        // Kolom 0: TIMESTAMP, Kolom 1: NAMA, Kolom 2: AKURASI, Kolom 3: JUMLAH AD WRNG
+        // ============================================================
         function processCSVData(csvText) {
             const rawData = [];
             const observersSet = new Set();
@@ -257,22 +257,22 @@
             const rows = csvToArray(csvText.trim());
             if (rows.length < 2) throw new Error('Data sheet kosong.');
 
-            // Asumsi Kolom db_adwarning: 0:TIMESTAMP, 1:NAMA, 2:AKURASI, 3:MUTU, 4:JUMLAH AD WRNG
             for (let i = 1; i < rows.length; i++) {
                 const cells = rows[i];
-                if (cells.length < 5 || !cells[0] || !cells[1]) continue; 
+                // Pastikan minimal ada 4 kolom (0, 1, 2, 3)
+                if (cells.length < 4 || !cells[0] || !cells[1]) continue; 
 
                 try {
-                    // PARSE TANGGAL
+                    // 1. PARSE TANGGAL (Kolom 0: TIMESTAMP - DD/MM/YYYY)
                     let dateStr = cells[0].replace(/["']/g, '').trim(); 
                     let dateObj = new Date(dateStr);
                     
                     if (dateStr.includes('/')) {
                         let parts = dateStr.split('/');
                         if (parts.length === 3) {
-                            let p0 = parseInt(parts[0]);
-                            let p1 = parseInt(parts[1]);
-                            let p2 = parseInt(parts[2]);
+                            let p0 = parseInt(parts[0]); // Tanggal
+                            let p1 = parseInt(parts[1]); // Bulan
+                            let p2 = parseInt(parts[2]); // Tahun
                             
                             let y = p2 > 1000 ? p2 : (p0 > 1000 ? p0 : new Date().getFullYear());
                             let m = p1;
@@ -290,30 +290,33 @@
                     const day = dateObj.getDate();
                     yearsSet.add(year);
 
-                    // PARSE FORECASTER (Kolom 1)
+                    // 2. PARSE NAMA (Kolom 1: NAMA)
                     let observer = cells[1].replace(/["']/g, '').trim().toUpperCase();
                     if (!observer) continue;
                     observersSet.add(observer);
 
-                    // PARSE JUMLAH AD WARNING (Kolom 4) - Deteksi "Nihil"
-                    let warningStr = cells[4] ? cells[4].toUpperCase().trim() : '';
+                    // 3. PARSE JUMLAH AD WARNING (Kolom 3: JUMLAH AD WRNG)
+                    let warningStr = cells[3] ? cells[3].toUpperCase().trim() : '';
                     let warnings = 0;
                     if (!warningStr.includes('NIHIL') && warningStr !== '') {
                         warnings = parseInt(warningStr.replace(/[^0-9]/g, '')) || 0;
                     }
 
-                    // PARSE AKURASI (Kolom 2) - Hanya jika ada peringatan
+                    // 4. PARSE AKURASI (Kolom 2: AKURASI)
+                    // Jika kolom Akurasi kosong tetapi ada warning > 0, otomatis set 100% (Sesuai aturan rekap sebelumnya)
                     let accStr = cells[2] ? cells[2].toUpperCase().trim() : '';
                     let akurasi = 0;
-                    if (warnings > 0 && !accStr.includes('NIHIL') && accStr !== '') {
-                        akurasi = parseFloat(accStr.replace(/[^0-9.]/g, '')) || 0;
+                    if (warnings > 0) {
+                        if (accStr === '' || accStr === '1' || accStr === '100%' || accStr === '100') {
+                            akurasi = 100;
+                        } else if (!accStr.includes('NIHIL')) {
+                            let parsedAcc = parseFloat(accStr.replace(/[^0-9.]/g, '')) || 0;
+                            // Jika ditulis desimal <= 1 (misal 0.8), konversi ke 80%
+                            akurasi = (parsedAcc <= 1 && parsedAcc > 0) ? parsedAcc * 100 : parsedAcc;
+                        }
                     }
 
-                    // PARSE MUTU (Kolom 3)
-                    let mutuStr = cells[3] ? cells[3].toUpperCase().trim() : '';
-                    let isGreat = (warnings > 0 && mutuStr.includes('GREAT')) ? 1 : 0;
-
-                    rawData.push({ year, month, day, observer, warnings, akurasi, isGreat });
+                    rawData.push({ year, month, day, observer, warnings, akurasi });
 
                 } catch (e) {
                     console.warn("Parse error at row " + i, cells);
@@ -340,12 +343,10 @@
             rawData.forEach(d => {
                 if(d.year === currentYear) {
                     const pIdx = personnel.indexOf(d.observer);
-                    
                     if (d.warnings > 0) {
                         statsData[d.month][pIdx].warnings += d.warnings;
                         statsData[d.month][pIdx].accuracySum += d.akurasi;
                         statsData[d.month][pIdx].validWarningDays += 1;
-                        statsData[d.month][pIdx].greatCount += d.isGreat;
 
                         dailyStats[d.month][d.day].warnings += d.warnings;
                         dailyStats[d.month][d.day].accuracySum += d.akurasi;
@@ -376,7 +377,7 @@
             for(let m = 0; m < 12; m++) {
                 let monthStats = [];
                 for(let p = 0; p < personnel.length; p++) {
-                    monthStats.push({ warnings: 0, accuracySum: 0, validWarningDays: 0, greatCount: 0 });
+                    monthStats.push({ warnings: 0, accuracySum: 0, validWarningDays: 0 });
                 }
                 statsData.push(monthStats);
 
@@ -393,24 +394,22 @@
         // ============================================================
         function getTotals(monthIdx) {
             const stats = statsData[monthIdx];
-            let totalWarnings = 0, totalAccuracySum = 0, totalValidDays = 0, totalGreat = 0;
+            let totalWarnings = 0, totalAccuracySum = 0, totalValidDays = 0;
 
             stats.forEach(s => {
                 totalWarnings += s.warnings;
                 totalAccuracySum += s.accuracySum;
                 totalValidDays += s.validWarningDays;
-                totalGreat += s.greatCount;
             });
-            return { totalWarnings, totalAccuracySum, totalValidDays, totalGreat };
+            return { totalWarnings, totalAccuracySum, totalValidDays };
         }
 
         function getRanking(monthIdx) {
             const stats = statsData[monthIdx];
             return personnel.map((name, i) => {
                 const s = stats[i];
-                // Rata-rata akurasi HANYA dari hari dimana mereka benar-benar mengeluarkan warning
                 const avgAcc = s.validWarningDays > 0 ? (s.accuracySum / s.validWarningDays) : 0;
-                return { name, warnings: s.warnings, acc: avgAcc, great: s.greatCount };
+                return { name, warnings: s.warnings, acc: avgAcc };
             }).filter(d => d.warnings > 0).sort((a, b) => b.warnings - a.warnings || b.acc - a.acc); 
         }
 
@@ -450,12 +449,7 @@
                     <div class="summary-card accent-green">
                         <div class="label">🎯 Rata-Rata Akurasi</div>
                         <div class="value">${avgAcc.toFixed(1)}%</div>
-                        <div class="sub">Validasi Saat Terjadi Peringatan</div>
-                    </div>
-                    <div class="summary-card accent-purple">
-                        <div class="label">🌟 Mutu "GREAT"</div>
-                        <div class="value">${overall.totalGreat}</div>
-                        <div class="sub">Total Evaluasi Sempurna</div>
+                        <div class="sub">Validasi Peringatan</div>
                     </div>
                     <div class="summary-card accent-orange">
                         <div class="label">👥 Forecaster Aktif</div>
@@ -482,7 +476,7 @@
                 </div>
             `;
 
-            // BARIS 1: TREND + POLAR (KONTRIBUSI)
+            // BARIS 1: TREND + POLAR
             html += `<div class="grid-2">
                 <div class="card">
                     <div class="card-header">
@@ -496,7 +490,7 @@
                 </div>
             </div>`;
 
-            // BARIS 2: BAR (JUMLAH WARNING) + DOUGHNUT
+            // BARIS 2: BAR + DOUGHNUT
             html += `<div class="grid-2">
                 <div class="card">
                     <div class="card-header"><h2>📊 Total Peringatan per Forecaster</h2><span class="chip">${month}</span></div>
@@ -571,7 +565,6 @@
                 dailyLabels.push(d); 
                 const stats = dailyStats[monthIdx][d];
                 dailyWarnings.push(stats.warnings);
-                // Hanya hitung rata-rata jika ada warning, jika tidak set null agar grafik rapi
                 dailyAkurasi.push(stats.validWarningDays > 0 ? (stats.accuracySum / stats.validWarningDays) : null);
             }
 
@@ -622,7 +615,6 @@
             
             // 2. RADAR AKURASI
             if(document.getElementById('radarChart') && top5.length > 0) {
-                // Gunakan Polar Area untuk membandingkan akurasi top 5 (Radar butuh parameter majemuk, karena parameter warning hanya 1 (akurasi), polar lebih cocok)
                 chartInstances.radar = new Chart(document.getElementById('radarChart'), {
                     type: 'polarArea', data: { labels: top5.map(d => d.name.split(' ')[0]),
                         datasets: [{ data: top5.map(d => d.acc), backgroundColor: top5.map((_, i) => `hsla(${10 + (i*20)}, 80%, 60%, 0.7)`) }]
@@ -630,11 +622,11 @@
                 });
             }
 
-            // 3. BAR CHART - Total Peringatan per Forecaster
+            // 3. BAR CHART
             if(document.getElementById('barWarningChart') && top5.length > 0) {
                 chartInstances.barWarn = new Chart(document.getElementById('barWarningChart'), {
                     type: 'bar', data: { 
-                        labels: top5.map(d => d.name.split(' ')[0]), // Nama Depan
+                        labels: top5.map(d => d.name.split(' ')[0]),
                         datasets: [{ 
                             label: 'AD Warning Diterbitkan',
                             data: top5.map(d => d.warnings), 
@@ -650,7 +642,7 @@
                 });
             }
 
-            // 4. DOUGHNUT (Proporsi Penerbitan Warning)
+            // 4. DOUGHNUT
             if(document.getElementById('doughnutChart') && ranking.length > 0) {
                 const colors = ['#e74c3c', '#e67e22', '#f1c40f', '#3498db', '#9b59b6', '#34495e', '#bdc3c7'];
                 chartInstances.doughnut = new Chart(document.getElementById('doughnutChart'), {
