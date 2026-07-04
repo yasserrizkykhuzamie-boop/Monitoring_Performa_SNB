@@ -151,12 +151,12 @@
         // ============================================================
         const PUBLISHED_ID = '2PACX-1vT4LcIB_-j2pfvt4BUNx4W6GKZiglF1UNo0-oR2yeKqjp7RY_004DF1GVmTxsuUiTx7oyBbrOsbx4Hp'; 
         const GID = '533661624'; 
-        const SHEET_NAME = 'db_flightdoc'; 
+        const SHEET_NAME = 'db_flighdoc'; 
 
         let personnel = [];
         let availableYears = [];
-        let statsData = []; 
-        let dailyStats = []; 
+        let statsData = []; // [month][person] = { realisasi, target, iw1207, iw1205, iw1209, extraFlight, charter }
+        let dailyStats = []; // [month][day] = { realisasi, target }
         let currentYear = new Date().getFullYear().toString();
 
         const monthNames = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
@@ -247,7 +247,7 @@
         }
 
         // ============================================================
-        // PEMBACAAN DATA ANTI PERGESERAN KOLOM (DENGAN DEFENSIVE PROGRAMMING)
+        // PEMBACAAN DATA LENGKAP SEMUA FLIGHT (IW1207, IW1205, IW1209, EXTRA, CHARTER)
         // ============================================================
         function processCSVData(csvText) {
             const rawData = [];
@@ -294,15 +294,13 @@
                     const day = dateObj.getDate();
                     yearsSet.add(year);
 
-                    // 2. PARSE METRIK PENERBANGAN
+                    // 2. PARSE METRIK PENERBANGAN SECARA TERPISAH
                     let realisasi = parseInt((cells[1] || '').toString().replace(/[^0-9.-]/g, '')) || 0;
                     let iw1207 = parseInt((cells[2] || '').toString().replace(/[^0-9.-]/g, '')) || 0;
                     let iw1205 = parseInt((cells[3] || '').toString().replace(/[^0-9.-]/g, '')) || 0;
                     let iw1209 = parseInt((cells[4] || '').toString().replace(/[^0-9.-]/g, '')) || 0;
-                    
                     let extraFlight = parseInt((cells[5] || '').toString().replace(/[^0-9.-]/g, '')) || 0;
-                    let charterVal = parseInt((cells[6] || '').toString().replace(/[^0-9.-]/g, '')) || 0;
-                    let charter = extraFlight + charterVal;
+                    let charter = parseInt((cells[6] || '').toString().replace(/[^0-9.-]/g, '')) || 0;
 
                     // 3. PARSE TARGET (Cek Kolom H lalu Kolom I)
                     let targetVal = parseInt((cells[7] || '').toString().replace(/[^0-9.-]/g, '')) || 0;
@@ -321,10 +319,9 @@
                     }
                     if (!observer) continue;
 
-                    // KUNCI PERBAIKAN: Menambahkan observer ke Set agar tidak memicu error undefined
                     observersSet.add(observer);
 
-                    rawData.push({ year, month, day, realisasi, iw1207, iw1205, iw1209, charter, target, observer });
+                    rawData.push({ year, month, day, realisasi, iw1207, iw1205, iw1209, extraFlight, charter, target, observer });
 
                 } catch (e) {
                     console.warn("Parse error at row " + i, cells);
@@ -351,13 +348,13 @@
             rawData.forEach(d => {
                 if(d.year === currentYear) {
                     const pIdx = personnel.indexOf(d.observer);
-                    // PENGAMAN TAMBAHAN (Defensive Guard) agar kebal error undefined
                     if (pIdx !== -1 && statsData[d.month] && statsData[d.month][pIdx]) {
                         statsData[d.month][pIdx].realisasi += d.realisasi;
                         statsData[d.month][pIdx].target += d.target;
                         statsData[d.month][pIdx].iw1207 += d.iw1207;
                         statsData[d.month][pIdx].iw1205 += d.iw1205;
                         statsData[d.month][pIdx].iw1209 += d.iw1209;
+                        statsData[d.month][pIdx].extraFlight += d.extraFlight;
                         statsData[d.month][pIdx].charter += d.charter;
                     }
 
@@ -390,7 +387,7 @@
             for(let m = 0; m < 12; m++) {
                 let monthStats = [];
                 for(let p = 0; p < personnel.length; p++) {
-                    monthStats.push({ realisasi: 0, target: 0, iw1207: 0, iw1205: 0, iw1209: 0, charter: 0 });
+                    monthStats.push({ realisasi: 0, target: 0, iw1207: 0, iw1205: 0, iw1209: 0, extraFlight: 0, charter: 0 });
                 }
                 statsData.push(monthStats);
 
@@ -404,29 +401,30 @@
 
         function getTotals(monthIdx) {
             const stats = statsData[monthIdx] || [];
-            let realisasi = 0, target = 0, charter = 0;
+            let realisasi = 0, target = 0, extraFlight = 0, charter = 0;
             let iw1207 = 0, iw1205 = 0, iw1209 = 0;
 
             stats.forEach(s => {
                 if (s) {
                     realisasi += s.realisasi;
                     target += s.target;
-                    charter += s.charter;
                     iw1207 += s.iw1207;
                     iw1205 += s.iw1205;
                     iw1209 += s.iw1209;
+                    extraFlight += s.extraFlight;
+                    charter += s.charter;
                 }
             });
-            return { realisasi, target, charter, iw1207, iw1205, iw1209 };
+            return { realisasi, target, extraFlight, charter, iw1207, iw1205, iw1209 };
         }
 
         function getRanking(monthIdx) {
             const stats = statsData[monthIdx] || [];
             return personnel.map((name, i) => {
-                const s = stats[i] || { realisasi: 0, target: 0, iw1207: 0, iw1205: 0, iw1209: 0, charter: 0 };
+                const s = stats[i] || { realisasi: 0, target: 0, iw1207: 0, iw1205: 0, iw1209: 0, extraFlight: 0, charter: 0 };
                 const capaian = s.target > 0 ? (s.realisasi / s.target * 100) : (s.realisasi > 0 ? 100 : 0);
                 return { name, total: s.realisasi, target: s.target, capaian, 
-                         iw1207: s.iw1207, iw1205: s.iw1205, iw1209: s.iw1209, charter: s.charter };
+                         iw1207: s.iw1207, iw1205: s.iw1205, iw1209: s.iw1209, extraFlight: s.extraFlight, charter: s.charter };
             }).filter(d => d.total > 0 || d.target > 0).sort((a, b) => b.total - a.total); 
         }
 
@@ -448,13 +446,12 @@
             const month = monthNames[monthIdx];
             const overall = getTotals(monthIdx);
             
-            const activeCount = (statsData[monthIdx] || []).filter(s => s && (s.realisasi > 0 || s.target > 0)).length;
             const avgCapaian = overall.target > 0 ? (overall.realisasi / overall.target * 100) : (overall.realisasi > 0 ? 100 : 0);
             const ranking = getRanking(monthIdx);
 
             let html = '';
             
-            // SUMMARY CARDS
+            // SUMMARY CARDS (Kini menampilkan Extra Flight dan Charter secara lengkap)
             html += `
                 <div class="summary-grid">
                     <div class="summary-card accent-blue">
@@ -471,6 +468,11 @@
                         <div class="label">✅ Capaian Layanan</div>
                         <div class="value">${avgCapaian.toFixed(1)}%</div>
                         <div class="sub">Realisasi vs Target</div>
+                    </div>
+                    <div class="summary-card accent-orange">
+                        <div class="label">➕ Extra Flight</div>
+                        <div class="value">${overall.extraFlight}</div>
+                        <div class="sub">Penerbangan Tambahan</div>
                     </div>
                     <div class="summary-card accent-orange">
                         <div class="label">🛩️ Flight Charter</div>
@@ -624,12 +626,13 @@
                 });
             }
             
+            // RADAR CHART (Menampilkan 5 kategori penerbangan secara lengkap)
             if(document.getElementById('radarChart') && top5.length > 0) {
                 const radarData = top5.map(d => {
-                    return [d.total, d.iw1207, d.iw1205, d.iw1209, d.charter];
+                    return [d.total, d.iw1207, d.iw1205, d.iw1209, d.extraFlight, d.charter];
                 });
                 chartInstances.radar = new Chart(document.getElementById('radarChart'), {
-                    type: 'radar', data: { labels: ['Total Penerbangan', 'IW 1207', 'IW 1205', 'IW 1209', 'Charter'],
+                    type: 'radar', data: { labels: ['Total Flight', 'IW 1207', 'IW 1205', 'IW 1209', 'Extra Flight', 'Charter'],
                         datasets: top5.map((d, i) => ({ label: d.name, data: radarData[i], borderColor: `hsl(${i * 60 + 200}, 70%, 50%)`, backgroundColor: `hsla(${i * 60 + 200}, 70%, 50%, 0.15)` }))
                     }, options: { responsive: true, maintainAspectRatio: false, scales: { r: { beginAtZero: true } } }
                 });
@@ -643,11 +646,13 @@
                 });
             }
 
+            // STACKED BAR CHART (Lengkap dengan Extra Flight)
             if(document.getElementById('stackedChart') && top5.length > 0) {
                 const names = top5.map(d => d.name);
                 const ds_1207 = top5.map(d => d.iw1207);
                 const ds_1205 = top5.map(d => d.iw1205);
                 const ds_1209 = top5.map(d => d.iw1209);
+                const ds_extra = top5.map(d => d.extraFlight);
                 const ds_chart = top5.map(d => d.charter);
 
                 chartInstances.stacked = new Chart(document.getElementById('stackedChart'), {
@@ -657,6 +662,7 @@
                             { label: 'IW 1207', data: ds_1207, backgroundColor: '#3498db' },
                             { label: 'IW 1205', data: ds_1205, backgroundColor: '#2ecc71' },
                             { label: 'IW 1209', data: ds_1209, backgroundColor: '#9b59b6' },
+                            { label: 'Extra Flight', data: ds_extra, backgroundColor: '#e67e22' },
                             { label: 'Charter', data: ds_chart, backgroundColor: '#f1c40f' }
                         ] 
                     },
@@ -664,12 +670,13 @@
                 });
             }
 
+            // DOUGHNUT CHART (Lengkap dengan Extra Flight)
             if(document.getElementById('doughnutChart')) {
                 const overall = getTotals(monthIdx);
                 chartInstances.doughnut = new Chart(document.getElementById('doughnutChart'), {
                     type: 'doughnut', data: { 
-                        labels: ['IW 1207', 'IW 1205', 'IW 1209', 'Charter'], 
-                        datasets: [{ data: [overall.iw1207, overall.iw1205, overall.iw1209, overall.charter], backgroundColor: ['#3498db', '#2ecc71', '#9b59b6', '#f1c40f'] }] 
+                        labels: ['IW 1207', 'IW 1205', 'IW 1209', 'Extra Flight', 'Charter'], 
+                        datasets: [{ data: [overall.iw1207, overall.iw1205, overall.iw1209, overall.extraFlight, overall.charter], backgroundColor: ['#3498db', '#2ecc71', '#9b59b6', '#e67e22', '#f1c40f'] }] 
                     },
                     options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right' } } }
                 });
