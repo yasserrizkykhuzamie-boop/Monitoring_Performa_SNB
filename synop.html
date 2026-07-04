@@ -261,7 +261,7 @@
         }
 
         // ============================================================
-        // SISTEM AUTO-MAPPING KOLOM (ANTI PERGESERAN)
+        // SISTEM AUTO-MAPPING KOLOM (SESUAI GAMBAR SPREADSHEET)
         // ============================================================
         function processCSVData(csvText) {
             const rawData = [];
@@ -279,13 +279,14 @@
                 return idx !== -1 ? idx : fallback;
             };
 
-            const idxDate = findIdx(['TIMESTAMP', 'TANGGAL', 'DATE'], 0);
-            const idxUtc = findIdx(['JAM UTC', 'UTC', 'JAM'], 1);
-            const idxAccKirim = findIdx(['AKURASI PENGIRIMAN'], 2);
-            const idxKetepatan = findIdx(['NILAI KETEPATAN', 'KETEPATAN'], 3);
-            const idxWaktu = findIdx(['WAKTU PENGIRIMAN', 'WAKTU', 'DELAY', 'MENIT'], 4);
-            const idxAccSandi = findIdx(['AKURASI PENYANDIAN', 'PENYANDIAN', 'SANDI'], 5);
-            const idxObserver = findIdx(['OBSERVER', 'PETUGAS', 'NAMA', 'FORECASTER'], 6);
+            // Disesuaikan agar pas dengan urutan & penamaan pada gambar spreadsheet (A sampai G)
+            const idxDate      = findIdx(['TIMESTAMP', 'TANGGAL', 'DATE'], 0);                          // Kolom A
+            const idxUtc       = findIdx(['JAM UTC', 'UTC', 'JAM'], 1);                                 // Kolom B
+            const idxAccKirim  = findIdx(['AKURASI PENGIRIMAR', 'AKURASI PENGIRIMAN', 'PENGIRIMAR'], 2);  // Kolom C
+            const idxKetepatan = findIdx(['NILAI KETEPATAN', 'KETEPATAN'], 3);                          // Kolom D
+            const idxWaktu     = findIdx(['WAKTU PENGIRIMAN', 'WAKTU', 'DELAY'], 4);                    // Kolom E
+            const idxAccSandi  = findIdx(['AKURASI PENYANDIAN', 'PENYANDIAN', 'SANDI'], 5);             // Kolom F
+            const idxObserver  = findIdx(['OBSERVER', 'PETUGAS', 'NAMA', 'FORECASTER'], 6);             // Kolom G
 
             for (let i = 1; i < rows.length; i++) {
                 const cells = rows[i];
@@ -461,7 +462,7 @@
             monthsArray.forEach(mIdx => {
                 totalDays += new Date(parseInt(year), mIdx + 1, 0).getDate();
             });
-            return totalDays * 8; // SYNOP standar dilakukan 8 kali sehari
+            return totalDays * 8; 
         }
 
         function getTotals(monthsArray) {
