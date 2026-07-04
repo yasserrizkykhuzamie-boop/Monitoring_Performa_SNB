@@ -151,7 +151,7 @@
         // ============================================================
         const PUBLISHED_ID = '2PACX-1vT4LcIB_-j2pfvt4BUNx4W6GKZiglF1UNo0-oR2yeKqjp7RY_004DF1GVmTxsuUiTx7oyBbrOsbx4Hp'; 
         const GID = '533661624'; 
-        const SHEET_NAME = 'db_flighdoc'; 
+        const SHEET_NAME = 'db_flightdoc'; 
 
         let personnel = [];
         let availableYears = [];
@@ -247,7 +247,7 @@
         }
 
         // ============================================================
-        // PEMBACAAN DATA ANTI PERGESERAN KOLOM (AUTO-DETECT NAMA & TARGET)
+        // PEMBACAAN DATA ANTI PERGESERAN KOLOM (DENGAN DEFENSIVE PROGRAMMING)
         // ============================================================
         function processCSVData(csvText) {
             const rawData = [];
@@ -295,35 +295,34 @@
                     yearsSet.add(year);
 
                     // 2. PARSE METRIK PENERBANGAN
-                    let realisasi = parseInt(cells[1].replace(/[^0-9.-]/g, '')) || 0;
-                    let iw1207 = parseInt(cells[2].replace(/[^0-9.-]/g, '')) || 0;
-                    let iw1205 = parseInt(cells[3].replace(/[^0-9.-]/g, '')) || 0;
-                    let iw1209 = parseInt(cells[4].replace(/[^0-9.-]/g, '')) || 0;
+                    let realisasi = parseInt((cells[1] || '').toString().replace(/[^0-9.-]/g, '')) || 0;
+                    let iw1207 = parseInt((cells[2] || '').toString().replace(/[^0-9.-]/g, '')) || 0;
+                    let iw1205 = parseInt((cells[3] || '').toString().replace(/[^0-9.-]/g, '')) || 0;
+                    let iw1209 = parseInt((cells[4] || '').toString().replace(/[^0-9.-]/g, '')) || 0;
                     
-                    let extraFlight = parseInt(cells[5].replace(/[^0-9.-]/g, '')) || 0;
-                    let charterVal = parseInt(cells[6].replace(/[^0-9.-]/g, '')) || 0;
+                    let extraFlight = parseInt((cells[5] || '').toString().replace(/[^0-9.-]/g, '')) || 0;
+                    let charterVal = parseInt((cells[6] || '').toString().replace(/[^0-9.-]/g, '')) || 0;
                     let charter = extraFlight + charterVal;
 
-                    // 3. PARSE TARGET (Mengatasi pergeseran dari Kolom H ke Kolom I)
+                    // 3. PARSE TARGET (Cek Kolom H lalu Kolom I)
                     let targetVal = parseInt((cells[7] || '').toString().replace(/[^0-9.-]/g, '')) || 0;
-                    // Jika Kolom H bernilai 0, cek Kolom I (cells[8]) apakah berisi angka target murni
                     if (targetVal === 0 && cells[8] && !isNaN(cells[8].toString().trim())) {
                         targetVal = parseInt(cells[8].toString().replace(/[^0-9.-]/g, '')) || 0;
                     }
-                    // Jika tetap 0, samakan dengan realisasi agar capaian otomatis tepat 100%
                     let target = targetVal > 0 ? targetVal : realisasi;
 
-                    // 4. PARSE NAMA PETUGAS (Mengatasi pergeseran dari Kolom I ke Kolom J)
+                    // 4. PARSE NAMA PETUGAS (Cek Kolom J lalu Kolom I)
                     let observer = '';
-                    // Prioritas cek Kolom J (indeks ke-9) jika berisi teks huruf
                     if (cells[9] && isNaN(cells[9].toString().replace(/["']/g, '').trim())) {
                         observer = cells[9].toString().replace(/["']/g, '').trim().toUpperCase();
                     } 
-                    // Jika tidak ada di Kolom J, baru cek Kolom I (indeks ke-8)
                     else if (cells[8] && isNaN(cells[8].toString().replace(/["']/g, '').trim())) {
                         observer = cells[8].toString().replace(/["']/g, '').trim().toUpperCase();
                     }
                     if (!observer) continue;
+
+                    // KUNCI PERBAIKAN: Menambahkan observer ke Set agar tidak memicu error undefined
+                    observersSet.add(observer);
 
                     rawData.push({ year, month, day, realisasi, iw1207, iw1205, iw1209, charter, target, observer });
 
@@ -352,25 +351,29 @@
             rawData.forEach(d => {
                 if(d.year === currentYear) {
                     const pIdx = personnel.indexOf(d.observer);
-                    
-                    statsData[d.month][pIdx].realisasi += d.realisasi;
-                    statsData[d.month][pIdx].target += d.target;
-                    statsData[d.month][pIdx].iw1207 += d.iw1207;
-                    statsData[d.month][pIdx].iw1205 += d.iw1205;
-                    statsData[d.month][pIdx].iw1209 += d.iw1209;
-                    statsData[d.month][pIdx].charter += d.charter;
+                    // PENGAMAN TAMBAHAN (Defensive Guard) agar kebal error undefined
+                    if (pIdx !== -1 && statsData[d.month] && statsData[d.month][pIdx]) {
+                        statsData[d.month][pIdx].realisasi += d.realisasi;
+                        statsData[d.month][pIdx].target += d.target;
+                        statsData[d.month][pIdx].iw1207 += d.iw1207;
+                        statsData[d.month][pIdx].iw1205 += d.iw1205;
+                        statsData[d.month][pIdx].iw1209 += d.iw1209;
+                        statsData[d.month][pIdx].charter += d.charter;
+                    }
 
-                    dailyStats[d.month][d.day].realisasi += d.realisasi;
-                    dailyStats[d.month][d.day].target += d.target;
+                    if (dailyStats[d.month] && dailyStats[d.month][d.day]) {
+                        dailyStats[d.month][d.day].realisasi += d.realisasi;
+                        dailyStats[d.month][d.day].target += d.target;
+                    }
                 }
             });
 
             setupMonthTabs();
             
             let activeMonth = new Date().getMonth();
-            if (statsData[activeMonth] && statsData[activeMonth].every(p => p.realisasi === 0 && p.target === 0)) {
+            if (statsData[activeMonth] && statsData[activeMonth].every(p => p && p.realisasi === 0 && p.target === 0)) {
                 for(let m = 11; m >= 0; m--) {
-                    if(!statsData[m].every(p => p.realisasi === 0 && p.target === 0)) {
+                    if(statsData[m] && !statsData[m].every(p => p && p.realisasi === 0 && p.target === 0)) {
                         activeMonth = m; break;
                     }
                 }
@@ -400,25 +403,27 @@
         }
 
         function getTotals(monthIdx) {
-            const stats = statsData[monthIdx];
+            const stats = statsData[monthIdx] || [];
             let realisasi = 0, target = 0, charter = 0;
             let iw1207 = 0, iw1205 = 0, iw1209 = 0;
 
             stats.forEach(s => {
-                realisasi += s.realisasi;
-                target += s.target;
-                charter += s.charter;
-                iw1207 += s.iw1207;
-                iw1205 += s.iw1205;
-                iw1209 += s.iw1209;
+                if (s) {
+                    realisasi += s.realisasi;
+                    target += s.target;
+                    charter += s.charter;
+                    iw1207 += s.iw1207;
+                    iw1205 += s.iw1205;
+                    iw1209 += s.iw1209;
+                }
             });
             return { realisasi, target, charter, iw1207, iw1205, iw1209 };
         }
 
         function getRanking(monthIdx) {
-            const stats = statsData[monthIdx];
+            const stats = statsData[monthIdx] || [];
             return personnel.map((name, i) => {
-                const s = stats[i];
+                const s = stats[i] || { realisasi: 0, target: 0, iw1207: 0, iw1205: 0, iw1209: 0, charter: 0 };
                 const capaian = s.target > 0 ? (s.realisasi / s.target * 100) : (s.realisasi > 0 ? 100 : 0);
                 return { name, total: s.realisasi, target: s.target, capaian, 
                          iw1207: s.iw1207, iw1205: s.iw1205, iw1209: s.iw1209, charter: s.charter };
@@ -443,7 +448,7 @@
             const month = monthNames[monthIdx];
             const overall = getTotals(monthIdx);
             
-            const activeCount = statsData[monthIdx].filter(s => s.realisasi > 0 || s.target > 0).length;
+            const activeCount = (statsData[monthIdx] || []).filter(s => s && (s.realisasi > 0 || s.target > 0)).length;
             const avgCapaian = overall.target > 0 ? (overall.realisasi / overall.target * 100) : (overall.realisasi > 0 ? 100 : 0);
             const ranking = getRanking(monthIdx);
 
@@ -579,7 +584,7 @@
 
             for (let d = 1; d <= daysInMonth; d++) {
                 dailyLabels.push(d); 
-                const stats = dailyStats[monthIdx][d];
+                const stats = (dailyStats[monthIdx] && dailyStats[monthIdx][d]) || { realisasi: 0, target: 0 };
                 dailyRealisasi.push(stats.realisasi);
                 dailyTarget.push(stats.target);
             }
