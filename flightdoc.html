@@ -106,7 +106,6 @@
     </div>
 
     <div class="dashboard">
-        <!-- ===== HEADER ===== -->
         <header class="header">
             <div class="header-left">
                 <div class="header-icon">✈️</div>
@@ -126,7 +125,6 @@
             </div>
         </header>
 
-        <!-- ===== FILTER ===== -->
         <div class="filter-bar">
             <div class="filter-group">
                 <label for="yearSelect">📆 Tahun</label>
@@ -142,7 +140,6 @@
         <div id="uiMessageArea"></div>
         <div id="dashboardContent"></div>
 
-        <!-- ===== FOOTER ===== -->
         <div class="footer">
             <strong>Dashboard Flight Doc AMP</strong> &middot; Data Live Google Sheets &middot; Diperbarui <span id="updateTime"></span>
         </div>
@@ -154,7 +151,7 @@
         // ============================================================
         const PUBLISHED_ID = '2PACX-1vT4LcIB_-j2pfvt4BUNx4W6GKZiglF1UNo0-oR2yeKqjp7RY_004DF1GVmTxsuUiTx7oyBbrOsbx4Hp'; 
         const GID = '533661624'; // <--- GID KHUSUS SHEET db_flightdoc
-        const SHEET_NAME = 'db_flighdoc'; // Sesuai nama di tab csv snippet
+        const SHEET_NAME = 'db_flighdoc'; // Nama sheet (disesuaikan agar tepat sasaran)
 
         // ============================================================
         // STRUKTUR DATA GLOBAL
@@ -168,15 +165,25 @@
         const monthNames = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
 
         // ============================================================
-        // CSV PARSER HELPER
+        // CSV PARSER HELPER (AUTO DELIMITER KOMA / TITIK KOMA / TAB)
         // ============================================================
         function csvToArray(strData) {
-            const objPattern = new RegExp(("(\\,|\\r?\\n|\\r|^)(?:\"([^\"]*(?:\"\"[^\"]*)*)\"|([^\\,\\r\\n]*))"), "gi");
+            strData = strData.trim();
+            const firstLine = strData.split(/\r?\n/)[0] || '';
+            const countComma = (firstLine.match(/,/g) || []).length;
+            const countSemi = (firstLine.match(/;/g) || []).length;
+            const countTab = (firstLine.match(/\t/g) || []).length;
+            
+            let delimiter = ",";
+            if (countSemi > countComma && countSemi >= countTab) delimiter = ";";
+            else if (countTab > countComma && countTab > countSemi) delimiter = "\t";
+
+            const objPattern = new RegExp(("(\\" + delimiter + "|\\r?\\n|\\r|^)(?:\"([^\"]*(?:\"\"[^\"]*)*)\"|([^\"\\" + delimiter + "\\r\\n]*))"), "gi");
             let arrData = [[]];
             let arrMatches = null;
             while (arrMatches = objPattern.exec(strData)) {
                 let strMatchedDelimiter = arrMatches[1];
-                if (strMatchedDelimiter.length && strMatchedDelimiter !== ",") arrData.push([]);
+                if (strMatchedDelimiter.length && strMatchedDelimiter !== delimiter) arrData.push([]);
                 let strMatchedValue;
                 if (arrMatches[2]) strMatchedValue = arrMatches[2].replace(new RegExp("\"\"", "g"), "\"");
                 else strMatchedValue = arrMatches[3];
@@ -193,7 +200,8 @@
             document.getElementById('uiMessageArea').innerHTML = ''; 
             document.getElementById('dashboardContent').innerHTML = ''; 
             
-            const targetUrl = `https://docs.google.com/spreadsheets/d/e/${PUBLISHED_ID}/pub?gid=${GID}&single=true&output=csv`;
+            // Mengambil langsung dari tab spesifik
+            const targetUrl = `https://docs.google.com/spreadsheets/d/e/${PUBLISHED_ID}/pub?gid=${GID}&single=true&sheet=${encodeURIComponent(SHEET_NAME)}&output=csv`;
             let csvText = null;
             
             try {
@@ -210,20 +218,17 @@
                 }
 
                 if (!csvText) {
-                    const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`;
+                    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`;
                     const proxyResponse = await fetch(proxyUrl);
                     if (proxyResponse.ok) {
-                        const data = await proxyResponse.json();
-                        if (data && data.contents) {
-                            const text = data.contents;
-                            if (!text.trim().startsWith('<html') && !text.trim().startsWith('<!DOCTYPE') && text.trim().length > 10) {
-                                csvText = text;
-                            }
+                        const text = await proxyResponse.text();
+                        if (text && !text.trim().startsWith('<html') && !text.trim().startsWith('<!DOCTYPE') && text.trim().length > 10) {
+                            csvText = text;
                         }
                     }
                 }
 
-                if (!csvText) throw new Error('Gagal menarik data. Periksa pengaturan Publish to Web untuk sheet ini.');
+                if (!csvText) throw new Error('Gagal menarik data. Pastikan spreadsheet dipublikasikan ke web dalam format CSV.');
 
                 processCSVData(csvText);
                 
@@ -251,6 +256,11 @@
             }
         }
 
+        // ============================================================
+        // PARSING DISESUAIKAN DENGAN STRUKTUR GAMBAR FLIGHT DOC
+        // 0:TIMESTAMP, 1:Jumlah Penerbangan, 2:IW 1207, 3:IW 1205, 4:IW 1209,
+        // 5:Extra Flight, 6:Charter, 7:Flight Doc Seharusnya, 8:Petugas
+        // ============================================================
         function processCSVData(csvText) {
             const rawData = [];
             const observersSet = new Set();
@@ -259,15 +269,14 @@
             const rows = csvToArray(csvText.trim());
             if (rows.length < 2) throw new Error('Data sheet kosong.');
 
-            // Loop data Flight Doc
-            // Asumsi Kolom: 0:Date, 1:Jumlah Penerbangan, 2:IW 1207, 3:IW 1205, 4:IW 1209, 5:Charter, 6:Flight Doc Seharusnya, 7:Petugas
             for (let i = 1; i < rows.length; i++) {
                 const cells = rows[i];
-                if (cells.length < 8 || !cells[0] || !cells[7]) continue; 
+                // Minimal butuh 9 kolom agar sampai ke kolom Petugas (indeks ke-8)
+                if (cells.length < 9 || !cells[0] || !cells[8]) continue; 
 
                 try {
-                    // PARSE TANGGAL
-                    let dateStr = cells[0].replace(/["']/g, '').trim(); 
+                    // 1. PARSE TANGGAL (Kolom 0: TIMESTAMP)
+                    let dateStr = cells[0].replace(/["']/g, '').trim().split(' ')[0]; 
                     let dateObj = new Date(dateStr);
                     
                     if (dateStr.includes('/')) {
@@ -284,6 +293,11 @@
                             if (p1 > 12) { m = p0; d = p1; } 
                             dateObj = new Date(y, m - 1, d);
                         }
+                    } else if (dateStr.includes('-')) {
+                        let parts = dateStr.split('-');
+                        if (parts.length === 3 && parts[2].length === 4) {
+                            dateObj = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
+                        }
                     }
 
                     if (isNaN(dateObj.getTime())) continue; 
@@ -293,16 +307,22 @@
                     const day = dateObj.getDate();
                     yearsSet.add(year);
 
-                    // PARSE METRIK FLIGHT DOC
+                    // 2. PARSE METRIK FLIGHT DOC SESUAI GAMBAR
                     let realisasi = parseInt(cells[1].replace(/[^0-9.-]/g, '')) || 0;
                     let iw1207 = parseInt(cells[2].replace(/[^0-9.-]/g, '')) || 0;
                     let iw1205 = parseInt(cells[3].replace(/[^0-9.-]/g, '')) || 0;
                     let iw1209 = parseInt(cells[4].replace(/[^0-9.-]/g, '')) || 0;
-                    let charter = parseInt(cells[5].replace(/[^0-9.-]/g, '')) || 0;
-                    let target = parseInt(cells[6].replace(/[^0-9.-]/g, '')) || 0;
+                    
+                    let extraFlight = parseInt(cells[5].replace(/[^0-9.-]/g, '')) || 0;
+                    let charterVal = parseInt(cells[6].replace(/[^0-9.-]/g, '')) || 0;
+                    let charter = extraFlight + charterVal; // Gabungkan penerbangan ekstra & charter
 
-                    // PARSE PETUGAS (Kolom 7)
-                    let observer = cells[7].replace(/["']/g, '').trim().toUpperCase();
+                    // Jika target (Flight Doc Seharusnya) kosong, jadikan sama dengan realisasi
+                    let targetVal = cells[7] ? cells[7].toString().trim() : '';
+                    let target = targetVal !== '' ? (parseInt(targetVal.replace(/[^0-9.-]/g, '')) || 0) : realisasi;
+
+                    // 3. PARSE PETUGAS (Kolom ke-8)
+                    let observer = cells[8].replace(/["']/g, '').trim().toUpperCase();
                     if (!observer) continue;
                     observersSet.add(observer);
 
@@ -403,11 +423,10 @@
             const stats = statsData[monthIdx];
             return personnel.map((name, i) => {
                 const s = stats[i];
-                // Capaian: Realisasi dibagi Target (Jika target 0 tapi ada realisasi, dianggap 100%)
                 const capaian = s.target > 0 ? (s.realisasi / s.target * 100) : (s.realisasi > 0 ? 100 : 0);
                 return { name, total: s.realisasi, target: s.target, capaian, 
                          iw1207: s.iw1207, iw1205: s.iw1205, iw1209: s.iw1209, charter: s.charter };
-            }).filter(d => d.total > 0 || d.target > 0).sort((a, b) => b.total - a.total); // Sort by highest flights handled
+            }).filter(d => d.total > 0 || d.target > 0).sort((a, b) => b.total - a.total); 
         }
 
         function getMonthlyTrend() {
@@ -643,7 +662,7 @@
 
                 chartInstances.stacked = new Chart(document.getElementById('stackedChart'), {
                     type: 'bar', data: { 
-                        labels: names.map(n => n.split(' ')[0]), // Ambil nama depan saja agar muat
+                        labels: names.map(n => n.split(' ')[0]),
                         datasets: [
                             { label: 'IW 1207', data: ds_1207, backgroundColor: '#3498db' },
                             { label: 'IW 1205', data: ds_1205, backgroundColor: '#2ecc71' },
