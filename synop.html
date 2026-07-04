@@ -257,19 +257,17 @@
         // ============================================================
         function parsePercentOrDecimal(rawStr) {
             if (!rawStr) return 0;
-            // Ubah tanda koma menjadi titik desimal (misal "98,5%" menjadi "98.5%")
             let cleanStr = rawStr.toString().replace(/%/g, '').replace(/,/g, '.').trim();
             let val = parseFloat(cleanStr);
             if (isNaN(val)) return 0;
-            // Jika angka > 1 (contoh: 98.5 atau 100), bagi 100 agar bernilai proporsi desimal 0.0 - 1.0
             if (val > 1) {
                 return val / 100;
             }
-            return val; // Jika sudah dalam format desimal (contoh: 0.98 atau 1), biarkan
+            return val;
         }
 
         // ============================================================
-        // PEMBACAAN DATA: KETEPATAN MURNI DARI KOLOM D (INDEKS 3)
+        // PEMBACAAN DATA
         // ============================================================
         function processCSVData(csvText) {
             const rawData = [];
@@ -281,7 +279,6 @@
 
             for (let i = 1; i < rows.length; i++) {
                 const cells = rows[i];
-                // Pastikan baris memiliki minimal kolom A sampai G (indeks 0 sampai 6)
                 if (cells.length < 7 || !cells[0] || !cells[6]) continue; 
 
                 try {
@@ -338,7 +335,6 @@
                     observersSet.add(observer);
 
                     // 4. NILAI KETEPATAN WAKTU -> MUTLAK DARI KOLOM D (Indeks 3)
-                    // Kolom E (Indeks 4) sengaja TIDAK DIGUNAKAN
                     let ketepatan = parsePercentOrDecimal(cells[3]);
 
                     // 5. AKURASI PENYANDIAN -> DARI KOLOM F (Indeks 5)
@@ -436,7 +432,7 @@
             monthsArray.forEach(mIdx => {
                 totalDays += new Date(parseInt(year), mIdx + 1, 0).getDate();
             });
-            return totalDays * 8; // Standar SYNOP: 8 jam pengamatan per hari
+            return totalDays * 8;
         }
 
         function getTotals(monthsArray) {
@@ -540,7 +536,7 @@
                 </div>
             `;
 
-            // BARIS 1: TREND + RADAR
+            // BARIS 1: TREND + BEBAN & PERFORMA (BAR CHART)
             html += `<div class="grid-2">
                 <div class="card">
                     <div class="card-header">
@@ -549,8 +545,8 @@
                     <div class="chart-container tall"><canvas id="trendChart"></canvas></div>
                 </div>
                 <div class="card">
-                    <div class="card-header"><h2>🕸️ Beban & Performa (Top 5)</h2><span class="chip">${periodTitle}</span></div>
-                    <div class="chart-container tall"><canvas id="radarChart"></canvas></div>
+                    <div class="card-header"><h2>📊 Beban & Performa (Top 5)</h2><span class="chip">${periodTitle}</span></div>
+                    <div class="chart-container tall"><canvas id="perfBarChart"></canvas></div>
                 </div>
             </div>`;
 
@@ -681,15 +677,27 @@
                 });
             }
             
-            // 2. RADAR
-            if(document.getElementById('radarChart') && top5.length > 0) {
-                const radarData = top5.map(d => {
-                    return [Math.min(100, d.total / (currentMode === 'quarter' ? 1.5 : 0.5)), d.accSandi, d.tepatWaktu];
-                });
-                chartInstances.radar = new Chart(document.getElementById('radarChart'), {
-                    type: 'radar', data: { labels: ['Volume Laporan', 'Akurasi Sandi', 'Ketepatan Waktu'],
-                        datasets: top5.map((d, i) => ({ label: d.name, data: radarData[i], borderColor: `hsl(${i * 60 + 210}, 70%, 50%)`, backgroundColor: `hsla(${i * 60 + 210}, 70%, 50%, 0.15)` }))
-                    }, options: { responsive: true, maintainAspectRatio: false, scales: { r: { beginAtZero: true, max: 100 } } }
+            // 2. BEBAN & PERFORMA (BAR CHART - MENGGANTIKAN RADAR)
+            if(document.getElementById('perfBarChart') && top5.length > 0) {
+                chartInstances.perfBar = new Chart(document.getElementById('perfBarChart'), {
+                    type: 'bar',
+                    data: {
+                        // Menggunakan nama depan/pendek agar label sumbu X rapi
+                        labels: top5.map(d => d.name.split(' ')[0]),
+                        datasets: [
+                            { label: 'Akurasi Sandi (%)', data: top5.map(d => d.accSandi), backgroundColor: '#1a8a4a', yAxisID: 'y', borderRadius: 4 },
+                            { label: 'Ketepatan Waktu (%)', data: top5.map(d => d.tepatWaktu), backgroundColor: '#1a3a6b', yAxisID: 'y', borderRadius: 4 },
+                            { label: 'Volume Laporan', data: top5.map(d => d.total), backgroundColor: '#c07a1a', yAxisID: 'y1', borderRadius: 4 }
+                        ]
+                    },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        scales: {
+                            y: { beginAtZero: true, max: 100, title: { display: true, text: 'Persentase (%)' } },
+                            y1: { beginAtZero: true, position: 'right', grid: { display: false }, title: { display: true, text: 'Laporan' }, ticks: { stepSize: 1 } }
+                        },
+                        plugins: { legend: { position: 'top', labels: { boxWidth: 12, font: { size: 10 } } } }
+                    }
                 });
             }
 
