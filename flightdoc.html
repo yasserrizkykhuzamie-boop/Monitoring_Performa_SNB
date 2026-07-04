@@ -150,23 +150,17 @@
         // KONFIGURASI GOOGLE SPREADSHEET
         // ============================================================
         const PUBLISHED_ID = '2PACX-1vT4LcIB_-j2pfvt4BUNx4W6GKZiglF1UNo0-oR2yeKqjp7RY_004DF1GVmTxsuUiTx7oyBbrOsbx4Hp'; 
-        const GID = '533661624'; // <--- GID KHUSUS SHEET db_flightdoc
-        const SHEET_NAME = 'db_flighdoc'; // Nama sheet (disesuaikan agar tepat sasaran)
+        const GID = '533661624'; 
+        const SHEET_NAME = 'db_flightdoc'; 
 
-        // ============================================================
-        // STRUKTUR DATA GLOBAL
-        // ============================================================
         let personnel = [];
         let availableYears = [];
-        let statsData = []; // [month][person] = { realisasi, target, iw1207, iw1205, iw1209, charter }
-        let dailyStats = []; // [month][day] = { realisasi, target }
+        let statsData = []; 
+        let dailyStats = []; 
         let currentYear = new Date().getFullYear().toString();
 
         const monthNames = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
 
-        // ============================================================
-        // CSV PARSER HELPER (AUTO DELIMITER KOMA / TITIK KOMA / TAB)
-        // ============================================================
         function csvToArray(strData) {
             strData = strData.trim();
             const firstLine = strData.split(/\r?\n/)[0] || '';
@@ -192,15 +186,11 @@
             return arrData;
         }
 
-        // ============================================================
-        // FETCH & PARSE DATA
-        // ============================================================
         async function fetchSheetData() {
             document.getElementById('loadingOverlay').style.display = 'flex';
             document.getElementById('uiMessageArea').innerHTML = ''; 
             document.getElementById('dashboardContent').innerHTML = ''; 
             
-            // Mengambil langsung dari tab spesifik
             const targetUrl = `https://docs.google.com/spreadsheets/d/e/${PUBLISHED_ID}/pub?gid=${GID}&single=true&sheet=${encodeURIComponent(SHEET_NAME)}&output=csv`;
             let csvText = null;
             
@@ -257,9 +247,7 @@
         }
 
         // ============================================================
-        // PARSING DISESUAIKAN DENGAN STRUKTUR GAMBAR FLIGHT DOC
-        // 0:TIMESTAMP, 1:Jumlah Penerbangan, 2:IW 1207, 3:IW 1205, 4:IW 1209,
-        // 5:Extra Flight, 6:Charter, 7:Flight Doc Seharusnya, 8:Petugas
+        // PEMBACAAN DATA ANTI PERGESERAN KOLOM (AUTO-DETECT NAMA & TARGET)
         // ============================================================
         function processCSVData(csvText) {
             const rawData = [];
@@ -271,11 +259,10 @@
 
             for (let i = 1; i < rows.length; i++) {
                 const cells = rows[i];
-                // Minimal butuh 9 kolom agar sampai ke kolom Petugas (indeks ke-8)
-                if (cells.length < 9 || !cells[0] || !cells[8]) continue; 
+                if (cells.length < 8 || !cells[0]) continue; 
 
                 try {
-                    // 1. PARSE TANGGAL (Kolom 0: TIMESTAMP)
+                    // 1. PARSE TANGGAL
                     let dateStr = cells[0].replace(/["']/g, '').trim().split(' ')[0]; 
                     let dateObj = new Date(dateStr);
                     
@@ -307,7 +294,7 @@
                     const day = dateObj.getDate();
                     yearsSet.add(year);
 
-                    // 2. PARSE METRIK FLIGHT DOC SESUAI GAMBAR
+                    // 2. PARSE METRIK PENERBANGAN
                     let realisasi = parseInt(cells[1].replace(/[^0-9.-]/g, '')) || 0;
                     let iw1207 = parseInt(cells[2].replace(/[^0-9.-]/g, '')) || 0;
                     let iw1205 = parseInt(cells[3].replace(/[^0-9.-]/g, '')) || 0;
@@ -315,16 +302,28 @@
                     
                     let extraFlight = parseInt(cells[5].replace(/[^0-9.-]/g, '')) || 0;
                     let charterVal = parseInt(cells[6].replace(/[^0-9.-]/g, '')) || 0;
-                    let charter = extraFlight + charterVal; // Gabungkan penerbangan ekstra & charter
+                    let charter = extraFlight + charterVal;
 
-                    // Jika target (Flight Doc Seharusnya) kosong, jadikan sama dengan realisasi
-                    let targetVal = cells[7] ? cells[7].toString().trim() : '';
-                    let target = targetVal !== '' ? (parseInt(targetVal.replace(/[^0-9.-]/g, '')) || 0) : realisasi;
+                    // 3. PARSE TARGET (Mengatasi pergeseran dari Kolom H ke Kolom I)
+                    let targetVal = parseInt((cells[7] || '').toString().replace(/[^0-9.-]/g, '')) || 0;
+                    // Jika Kolom H bernilai 0, cek Kolom I (cells[8]) apakah berisi angka target murni
+                    if (targetVal === 0 && cells[8] && !isNaN(cells[8].toString().trim())) {
+                        targetVal = parseInt(cells[8].toString().replace(/[^0-9.-]/g, '')) || 0;
+                    }
+                    // Jika tetap 0, samakan dengan realisasi agar capaian otomatis tepat 100%
+                    let target = targetVal > 0 ? targetVal : realisasi;
 
-                    // 3. PARSE PETUGAS (Kolom ke-8)
-                    let observer = cells[8].replace(/["']/g, '').trim().toUpperCase();
+                    // 4. PARSE NAMA PETUGAS (Mengatasi pergeseran dari Kolom I ke Kolom J)
+                    let observer = '';
+                    // Prioritas cek Kolom J (indeks ke-9) jika berisi teks huruf
+                    if (cells[9] && isNaN(cells[9].toString().replace(/["']/g, '').trim())) {
+                        observer = cells[9].toString().replace(/["']/g, '').trim().toUpperCase();
+                    } 
+                    // Jika tidak ada di Kolom J, baru cek Kolom I (indeks ke-8)
+                    else if (cells[8] && isNaN(cells[8].toString().replace(/["']/g, '').trim())) {
+                        observer = cells[8].toString().replace(/["']/g, '').trim().toUpperCase();
+                    }
                     if (!observer) continue;
-                    observersSet.add(observer);
 
                     rawData.push({ year, month, day, realisasi, iw1207, iw1205, iw1209, charter, target, observer });
 
@@ -400,9 +399,6 @@
             }
         }
 
-        // ============================================================
-        // FUNGSI KALKULASI STATISTIK FLIGHT DOC
-        // ============================================================
         function getTotals(monthIdx) {
             const stats = statsData[monthIdx];
             let realisasi = 0, target = 0, charter = 0;
@@ -441,9 +437,6 @@
             return { months, realisasis, targets, capaians };
         }
 
-        // ============================================================
-        // RENDER UI DASHBOARD
-        // ============================================================
         function renderDashboard(monthIdx) {
             if(personnel.length === 0) return ''; 
 
@@ -571,9 +564,6 @@
             return html;
         }
 
-        // ============================================================
-        // RENDER CHARTS
-        // ============================================================
         let chartInstances = {};
         function renderAllCharts(monthIdx) {
             if(personnel.length === 0) return;
@@ -584,7 +574,6 @@
             const trend = getMonthlyTrend();
             const top5 = ranking.slice(0, 5);
 
-            // 0. CHART HARIAN
             const daysInMonth = new Date(parseInt(currentYear), monthIdx + 1, 0).getDate();
             const dailyLabels = [], dailyRealisasi = [], dailyTarget = [];
 
@@ -618,7 +607,6 @@
                 });
             }
 
-            // 1. TREND OVERALL (12 Bulan)
             if(document.getElementById('trendChart')) {
                 chartInstances.trend = new Chart(document.getElementById('trendChart'), {
                     type: 'line', data: { labels: trend.months,
@@ -631,7 +619,6 @@
                 });
             }
             
-            // 2. RADAR
             if(document.getElementById('radarChart') && top5.length > 0) {
                 const radarData = top5.map(d => {
                     return [d.total, d.iw1207, d.iw1205, d.iw1209, d.charter];
@@ -643,7 +630,6 @@
                 });
             }
 
-            // 3. POLAR
             if(document.getElementById('polarChart')) {
                 const activeData = ranking.map(d => ({ name: d.name, total: d.total }));
                 chartInstances.polar = new Chart(document.getElementById('polarChart'), {
@@ -652,7 +638,6 @@
                 });
             }
 
-            // 4. STACKED BAR (Rincian Penerbangan Top 5)
             if(document.getElementById('stackedChart') && top5.length > 0) {
                 const names = top5.map(d => d.name);
                 const ds_1207 = top5.map(d => d.iw1207);
@@ -674,7 +659,6 @@
                 });
             }
 
-            // 5. DOUGHNUT (Distribusi Jenis Penerbangan)
             if(document.getElementById('doughnutChart')) {
                 const overall = getTotals(monthIdx);
                 chartInstances.doughnut = new Chart(document.getElementById('doughnutChart'), {
@@ -687,9 +671,6 @@
             }
         }
 
-        // ============================================================
-        // EVENT LISTENER & INIT
-        // ============================================================
         function setupMonthTabs() {
             const tabsContainer = document.getElementById('monthTabs');
             tabsContainer.innerHTML = '';
