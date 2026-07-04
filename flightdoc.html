@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Dashboard Flight Doc - 12 Bulan</title>
+    <title>Dashboard Flight Doc - 12 Bulan & Triwulanan</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <style>
         /* ----- RESET & VARIABLES ----- */
@@ -131,10 +131,17 @@
                 <select id="yearSelect"></select>
             </div>
             <div class="filter-group">
-                <label for="monthSelect">📅 Bulan</label>
-                <select id="monthSelect"></select>
+                <label for="modeSelect">⚡ Mode</label>
+                <select id="modeSelect">
+                    <option value="month">Bulanan</option>
+                    <option value="quarter">Triwulanan</option>
+                </select>
             </div>
-            <div class="month-tabs" id="monthTabs"></div>
+            <div class="filter-group">
+                <label for="periodSelect" id="periodLabel">📅 Bulan</label>
+                <select id="periodSelect"></select>
+            </div>
+            <div class="month-tabs" id="periodTabs"></div>
         </div>
 
         <div id="uiMessageArea"></div>
@@ -158,8 +165,12 @@
         let statsData = []; // [month][person] = { realisasi, target, iw1207, iw1205, iw1209, extraFlight, charter }
         let dailyStats = []; // [month][day] = { realisasi, target }
         let currentYear = new Date().getFullYear().toString();
+        let currentMode = 'month'; // 'month' atau 'quarter'
+        let currentPeriodIdx = new Date().getMonth();
 
         const monthNames = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+        const quarterNames = ['Triwulan I (Q1)', 'Triwulan II (Q2)', 'Triwulan III (Q3)', 'Triwulan IV (Q4)'];
+        const quarterShortNames = ['TW I', 'TW II', 'TW III', 'TW IV'];
 
         function csvToArray(strData) {
             strData = strData.trim();
@@ -246,9 +257,6 @@
             }
         }
 
-        // ============================================================
-        // PEMBACAAN DATA LENGKAP SEMUA FLIGHT (IW1207, IW1205, IW1209, EXTRA, CHARTER)
-        // ============================================================
         function processCSVData(csvText) {
             const rawData = [];
             const observersSet = new Set();
@@ -302,14 +310,14 @@
                     let extraFlight = parseInt((cells[5] || '').toString().replace(/[^0-9.-]/g, '')) || 0;
                     let charter = parseInt((cells[6] || '').toString().replace(/[^0-9.-]/g, '')) || 0;
 
-                    // 3. PARSE TARGET (Cek Kolom H lalu Kolom I)
+                    // 3. PARSE TARGET
                     let targetVal = parseInt((cells[7] || '').toString().replace(/[^0-9.-]/g, '')) || 0;
                     if (targetVal === 0 && cells[8] && !isNaN(cells[8].toString().trim())) {
                         targetVal = parseInt(cells[8].toString().replace(/[^0-9.-]/g, '')) || 0;
                     }
                     let target = targetVal > 0 ? targetVal : realisasi;
 
-                    // 4. PARSE NAMA PETUGAS (Cek Kolom J lalu Kolom I)
+                    // 4. PARSE NAMA PETUGAS
                     let observer = '';
                     if (cells[9] && isNaN(cells[9].toString().replace(/["']/g, '').trim())) {
                         observer = cells[9].toString().replace(/["']/g, '').trim().toUpperCase();
@@ -365,7 +373,7 @@
                 }
             });
 
-            setupMonthTabs();
+            setupPeriodControls();
             
             let activeMonth = new Date().getMonth();
             if (statsData[activeMonth] && statsData[activeMonth].every(p => p && p.realisasi === 0 && p.target === 0)) {
@@ -376,8 +384,9 @@
                 }
             }
 
-            document.getElementById('monthSelect').value = activeMonth;
-            updateDashboard(activeMonth);
+            currentPeriodIdx = currentMode === 'month' ? activeMonth : Math.floor(activeMonth / 3);
+            document.getElementById('periodSelect').value = currentPeriodIdx;
+            updateDashboard();
         }
 
         function buildEmptyDataArrays() {
@@ -399,13 +408,41 @@
             }
         }
 
-        function getTotals(monthIdx) {
-            const stats = statsData[monthIdx] || [];
+        // Helper untuk mengambil daftar indeks bulan berdasarkan mode
+        function getMonthsInPeriod() {
+            if (currentMode === 'month') {
+                return [currentPeriodIdx];
+            } else {
+                return [currentPeriodIdx * 3, currentPeriodIdx * 3 + 1, currentPeriodIdx * 3 + 2];
+            }
+        }
+
+        function getTotals(monthsArray) {
             let realisasi = 0, target = 0, extraFlight = 0, charter = 0;
             let iw1207 = 0, iw1205 = 0, iw1209 = 0;
 
-            stats.forEach(s => {
-                if (s) {
+            monthsArray.forEach(mIdx => {
+                const stats = statsData[mIdx] || [];
+                stats.forEach(s => {
+                    if (s) {
+                        realisasi += s.realisasi;
+                        target += s.target;
+                        iw1207 += s.iw1207;
+                        iw1205 += s.iw1205;
+                        iw1209 += s.iw1209;
+                        extraFlight += s.extraFlight;
+                        charter += s.charter;
+                    }
+                });
+            });
+            return { realisasi, target, extraFlight, charter, iw1207, iw1205, iw1209 };
+        }
+
+        function getRanking(monthsArray) {
+            return personnel.map((name, i) => {
+                let realisasi = 0, target = 0, iw1207 = 0, iw1205 = 0, iw1209 = 0, extraFlight = 0, charter = 0;
+                monthsArray.forEach(mIdx => {
+                    const s = (statsData[mIdx] && statsData[mIdx][i]) || { realisasi: 0, target: 0, iw1207: 0, iw1205: 0, iw1209: 0, extraFlight: 0, charter: 0 };
                     realisasi += s.realisasi;
                     target += s.target;
                     iw1207 += s.iw1207;
@@ -413,18 +450,9 @@
                     iw1209 += s.iw1209;
                     extraFlight += s.extraFlight;
                     charter += s.charter;
-                }
-            });
-            return { realisasi, target, extraFlight, charter, iw1207, iw1205, iw1209 };
-        }
-
-        function getRanking(monthIdx) {
-            const stats = statsData[monthIdx] || [];
-            return personnel.map((name, i) => {
-                const s = stats[i] || { realisasi: 0, target: 0, iw1207: 0, iw1205: 0, iw1209: 0, extraFlight: 0, charter: 0 };
-                const capaian = s.target > 0 ? (s.realisasi / s.target * 100) : (s.realisasi > 0 ? 100 : 0);
-                return { name, total: s.realisasi, target: s.target, capaian, 
-                         iw1207: s.iw1207, iw1205: s.iw1205, iw1209: s.iw1209, extraFlight: s.extraFlight, charter: s.charter };
+                });
+                const capaian = target > 0 ? (realisasi / target * 100) : (realisasi > 0 ? 100 : 0);
+                return { name, total: realisasi, target, capaian, iw1207, iw1205, iw1209, extraFlight, charter };
             }).filter(d => d.total > 0 || d.target > 0).sort((a, b) => b.total - a.total); 
         }
 
@@ -432,7 +460,7 @@
             const months = []; const realisasis = []; const targets = []; const capaians = [];
             for (let m = 0; m < 12; m++) {
                 months.push(monthNames[m].substring(0, 3));
-                const { realisasi, target } = getTotals(m);
+                const { realisasi, target } = getTotals([m]);
                 realisasis.push(realisasi);
                 targets.push(target);
                 capaians.push(target > 0 ? (realisasi / target * 100) : (realisasi > 0 ? 100 : 0));
@@ -440,24 +468,25 @@
             return { months, realisasis, targets, capaians };
         }
 
-        function renderDashboard(monthIdx) {
+        function renderDashboard() {
             if(personnel.length === 0) return ''; 
 
-            const month = monthNames[monthIdx];
-            const overall = getTotals(monthIdx);
+            const monthsArray = getMonthsInPeriod();
+            const periodTitle = currentMode === 'month' ? monthNames[currentPeriodIdx] : quarterNames[currentPeriodIdx];
+            const overall = getTotals(monthsArray);
             
+            const ranking = getRanking(monthsArray);
             const avgCapaian = overall.target > 0 ? (overall.realisasi / overall.target * 100) : (overall.realisasi > 0 ? 100 : 0);
-            const ranking = getRanking(monthIdx);
 
             let html = '';
             
-            // SUMMARY CARDS (Kini menampilkan Extra Flight dan Charter secara lengkap)
+            // SUMMARY CARDS
             html += `
                 <div class="summary-grid">
                     <div class="summary-card accent-blue">
                         <div class="label">✈️ Dokumen Dibuat</div>
                         <div class="value">${overall.realisasi}</div>
-                        <div class="sub">Total Flight Doc (${month})</div>
+                        <div class="sub">Total Flight Doc (${periodTitle})</div>
                     </div>
                     <div class="summary-card accent-purple">
                         <div class="label">🎯 Target Dokumen</div>
@@ -486,12 +515,12 @@
                 </div>
             `;
 
-            // CHART: TREN HARIAN
+            // CHART: TREN HARIAN (Mengabungkan hari jika mode Triwulan)
             html += `
                 <div class="card" style="margin-bottom: 24px;">
                     <div class="card-header">
                         <h2>📆 Tren Volume Penerbangan Harian</h2>
-                        <span class="chip">${month} ${currentYear}</span>
+                        <span class="chip">${periodTitle} ${currentYear}</span>
                     </div>
                     <div class="chart-container tall">
                         <canvas id="dailyTrendChart"></canvas>
@@ -508,7 +537,7 @@
                     <div class="chart-container tall"><canvas id="trendChart"></canvas></div>
                 </div>
                 <div class="card">
-                    <div class="card-header"><h2>🕸️ Beban Maskapai (Top 5)</h2><span class="chip">${month}</span></div>
+                    <div class="card-header"><h2>🕸️ Beban Maskapai (Top 5)</h2><span class="chip">${periodTitle}</span></div>
                     <div class="chart-container tall"><canvas id="radarChart"></canvas></div>
                 </div>
             </div>`;
@@ -516,15 +545,15 @@
             // BARIS 2: POLAR + STACKED + DOUGHNUT
             html += `<div class="grid-3">
                 <div class="card">
-                    <div class="card-header"><h2>🍩 Proporsi Beban Petugas</h2><span class="chip">${month}</span></div>
+                    <div class="card-header"><h2>🍩 Proporsi Beban Petugas</h2><span class="chip">${periodTitle}</span></div>
                     <div class="chart-container"><canvas id="polarChart"></canvas></div>
                 </div>
                 <div class="card">
-                    <div class="card-header"><h2>📊 Rincian Penerbangan (Top 5)</h2><span class="chip">${month}</span></div>
+                    <div class="card-header"><h2>📊 Rincian Penerbangan (Top 5)</h2><span class="chip">${periodTitle}</span></div>
                     <div class="chart-container"><canvas id="stackedChart"></canvas></div>
                 </div>
                 <div class="card">
-                    <div class="card-header"><h2>📉 Distribusi Jenis Flight</h2><span class="chip">${month}</span></div>
+                    <div class="card-header"><h2>📉 Distribusi Jenis Flight</h2><span class="chip">${periodTitle}</span></div>
                     <div class="chart-container"><canvas id="doughnutChart"></canvas></div>
                 </div>
             </div>`;
@@ -533,10 +562,10 @@
             const top8 = ranking.slice(0, 8);
             html += `<div class="grid-2-1">
                 <div class="card">
-                    <div class="card-header"><h2>🔥 Heatmap Capaian (Top 8)</h2><span class="chip">${month}</span></div>
+                    <div class="card-header"><h2>🔥 Heatmap Capaian (Top 8)</h2><span class="chip">${periodTitle}</span></div>
                     <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:12px;">`;
             
-            if(top8.length === 0) html += `<p style="grid-column: span 4; text-align:center; color:#999;">Belum ada data di bulan ini.</p>`;
+            if(top8.length === 0) html += `<p style="grid-column: span 4; text-align:center; color:#999;">Belum ada data di periode ini.</p>`;
             
             top8.forEach((d) => {
                 const pct = Math.round(d.capaian);
@@ -554,7 +583,7 @@
             });
             html += `</div></div>
                 <div class="card">
-                    <div class="card-header"><h2>🏆 Peringkat Kinerja</h2><span class="chip">${month}</span></div>
+                    <div class="card-header"><h2>🏆 Peringkat Kinerja</h2><span class="chip">${periodTitle}</span></div>
                     <div style="max-height:280px; overflow-y:auto;">
                         <table class="rank-table">
                             <thead><tr><th>Rank</th><th>Petugas</th><th>Realisasi</th><th>Target</th><th>Capaian</th></tr></thead>
@@ -572,24 +601,28 @@
         }
 
         let chartInstances = {};
-        function renderAllCharts(monthIdx) {
+        function renderAllCharts() {
             if(personnel.length === 0) return;
             Object.values(chartInstances).forEach(ch => { if (ch) ch.destroy(); });
             chartInstances = {};
 
-            const ranking = getRanking(monthIdx);
+            const monthsArray = getMonthsInPeriod();
+            const ranking = getRanking(monthsArray);
             const trend = getMonthlyTrend();
             const top5 = ranking.slice(0, 5);
 
-            const daysInMonth = new Date(parseInt(currentYear), monthIdx + 1, 0).getDate();
+            // 0. CHART HARIAN
             const dailyLabels = [], dailyRealisasi = [], dailyTarget = [];
-
-            for (let d = 1; d <= daysInMonth; d++) {
-                dailyLabels.push(d); 
-                const stats = (dailyStats[monthIdx] && dailyStats[monthIdx][d]) || { realisasi: 0, target: 0 };
-                dailyRealisasi.push(stats.realisasi);
-                dailyTarget.push(stats.target);
-            }
+            monthsArray.forEach(mIdx => {
+                const daysInMonth = new Date(parseInt(currentYear), mIdx + 1, 0).getDate();
+                for (let d = 1; d <= daysInMonth; d++) {
+                    const labelStr = currentMode === 'quarter' ? `${d} ${monthNames[mIdx].substring(0,3)}` : `${d}`;
+                    dailyLabels.push(labelStr);
+                    const stats = (dailyStats[mIdx] && dailyStats[mIdx][d]) || { realisasi: 0, target: 0 };
+                    dailyRealisasi.push(stats.realisasi);
+                    dailyTarget.push(stats.target);
+                }
+            });
 
             if(document.getElementById('dailyTrendChart')) {
                 chartInstances.dailyTrend = new Chart(document.getElementById('dailyTrendChart'), {
@@ -599,7 +632,7 @@
                         datasets: [
                             {
                                 type: 'line', label: 'Target Dokumen', data: dailyTarget, borderColor: '#e74c3c', backgroundColor: 'transparent',
-                                tension: 0.1, borderWidth: 2, pointRadius: 2, borderDash: [5,5]
+                                tension: 0.1, borderWidth: 2, pointRadius: currentMode === 'quarter' ? 1 : 2, borderDash: [5,5]
                             },
                             {
                                 type: 'bar', label: 'Realisasi Flight Doc', data: dailyRealisasi, backgroundColor: '#3498db', borderRadius: 4
@@ -608,7 +641,7 @@
                     },
                     options: {
                         responsive: true, maintainAspectRatio: false,
-                        scales: { y: { beginAtZero: true } },
+                        scales: { y: { beginAtZero: true }, x: { ticks: { maxTicksLimit: currentMode === 'quarter' ? 15 : 31 } } },
                         plugins: { tooltip: { mode: 'index', intersect: false } }
                     }
                 });
@@ -626,7 +659,6 @@
                 });
             }
             
-            // RADAR CHART (Menampilkan 5 kategori penerbangan secara lengkap)
             if(document.getElementById('radarChart') && top5.length > 0) {
                 const radarData = top5.map(d => {
                     return [d.total, d.iw1207, d.iw1205, d.iw1209, d.extraFlight, d.charter];
@@ -646,7 +678,6 @@
                 });
             }
 
-            // STACKED BAR CHART (Lengkap dengan Extra Flight)
             if(document.getElementById('stackedChart') && top5.length > 0) {
                 const names = top5.map(d => d.name);
                 const ds_1207 = top5.map(d => d.iw1207);
@@ -670,9 +701,8 @@
                 });
             }
 
-            // DOUGHNUT CHART (Lengkap dengan Extra Flight)
             if(document.getElementById('doughnutChart')) {
-                const overall = getTotals(monthIdx);
+                const overall = getTotals(monthsArray);
                 chartInstances.doughnut = new Chart(document.getElementById('doughnutChart'), {
                     type: 'doughnut', data: { 
                         labels: ['IW 1207', 'IW 1205', 'IW 1209', 'Extra Flight', 'Charter'], 
@@ -683,27 +713,42 @@
             }
         }
 
-        function setupMonthTabs() {
-            const tabsContainer = document.getElementById('monthTabs');
-            tabsContainer.innerHTML = '';
-            const selMonth = parseInt(document.getElementById('monthSelect').value);
-            monthNames.forEach((name, idx) => {
+        function setupPeriodControls() {
+            const periodSelect = document.getElementById('periodSelect');
+            const periodTabs = document.getElementById('periodTabs');
+            const periodLabel = document.getElementById('periodLabel');
+
+            periodSelect.innerHTML = '';
+            periodTabs.innerHTML = '';
+
+            const list = currentMode === 'month' ? monthNames : quarterNames;
+            const shortList = currentMode === 'month' ? monthNames.map(m => m.substring(0,3)) : quarterShortNames;
+            periodLabel.textContent = currentMode === 'month' ? '📅 Bulan' : '📅 Triwulan';
+
+            list.forEach((name, idx) => {
+                const opt = document.createElement('option');
+                opt.value = idx; opt.textContent = name;
+                if(idx === currentPeriodIdx) opt.selected = true;
+                periodSelect.appendChild(opt);
+
                 const btn = document.createElement('button');
-                btn.className = 'month-tab' + (idx === selMonth ? ' active' : '');
-                btn.textContent = name.substring(0, 3);
-                btn.addEventListener('click', function() {
-                    document.querySelectorAll('.month-tab').forEach(t => t.classList.remove('active'));
-                    this.classList.add('active');
-                    document.getElementById('monthSelect').value = idx;
-                    updateDashboard(idx);
-                });
-                tabsContainer.appendChild(btn);
+                btn.className = 'month-tab' + (idx === currentPeriodIdx ? ' active' : '');
+                btn.textContent = shortList[idx];
+                btn.addEventListener('click', () => selectPeriod(idx));
+                periodTabs.appendChild(btn);
             });
         }
 
-        function updateDashboard(monthIdx) {
-            document.getElementById('dashboardContent').innerHTML = renderDashboard(monthIdx);
-            setTimeout(() => { renderAllCharts(monthIdx); }, 80);
+        function selectPeriod(idx) {
+            currentPeriodIdx = idx;
+            document.getElementById('periodSelect').value = idx;
+            document.querySelectorAll('#periodTabs .month-tab').forEach((t, i) => t.classList.toggle('active', i === idx));
+            updateDashboard();
+        }
+
+        function updateDashboard() {
+            document.getElementById('dashboardContent').innerHTML = renderDashboard();
+            setTimeout(() => { renderAllCharts(); }, 80);
         }
 
         function init() {
@@ -712,17 +757,20 @@
             document.getElementById('currentDate').textContent = dateStr;
             document.getElementById('updateTime').textContent = `${dateStr}, ${now.toLocaleTimeString('id-ID', {hour:'2-digit', minute:'2-digit'})} WIB`;
 
-            document.getElementById('monthSelect').innerHTML = monthNames.map((m, i) => `<option value="${i}">${m}</option>`).join('');
-            document.getElementById('monthSelect').value = now.getMonth();
-
             document.getElementById('yearSelect').addEventListener('change', function() {
                 currentYear = this.value;
                 fetchSheetData(); 
             });
-            document.getElementById('monthSelect').addEventListener('change', function() {
-                const idx = parseInt(this.value);
-                document.querySelectorAll('.month-tab').forEach((tab, i) => tab.classList.toggle('active', i === idx));
-                updateDashboard(idx);
+
+            document.getElementById('modeSelect').addEventListener('change', function() {
+                currentMode = this.value;
+                currentPeriodIdx = currentMode === 'month' ? new Date().getMonth() : Math.floor(new Date().getMonth() / 3);
+                setupPeriodControls();
+                updateDashboard();
+            });
+
+            document.getElementById('periodSelect').addEventListener('change', function() {
+                selectPeriod(parseInt(this.value));
             });
 
             fetchSheetData();
