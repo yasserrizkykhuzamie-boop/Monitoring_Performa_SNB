@@ -154,11 +154,11 @@
 
     <script>
         // ============================================================
-        // KONFIGURASI GOOGLE SPREADSHEET (SHEET: db_synop)
+        // KONFIGURASI GOOGLE SPREADSHEET (TERBARU)
         // ============================================================
         const PUBLISHED_ID = '2PACX-1vT4LcIB_-j2pfvt4BUNx4W6GKZiglF1UNo0-oR2yeKqjp7RY_004DF1GVmTxsuUiTx7oyBbrOsbx4Hp'; 
         const GID = '0'; 
-        const SHEET_NAME = 'db_synop'; 
+        const SHEET_NAME = 'db_sinoptik'; 
 
         let personnel = [];
         let availableYears = [];
@@ -205,34 +205,35 @@
             document.getElementById('uiMessageArea').innerHTML = ''; 
             document.getElementById('dashboardContent').innerHTML = ''; 
             
-            const targetUrl = `https://docs.google.com/spreadsheets/d/e/${PUBLISHED_ID}/pub?single=true&sheet=${encodeURIComponent(SHEET_NAME)}&output=csv`;
+            // Menggunakan parameter gid=0 agar pasti mengarah tepat ke sheet kamu dalam format CSV
+            const targetUrl = `https://docs.google.com/spreadsheets/d/e/${PUBLISHED_ID}/pub?gid=${GID}&single=true&output=csv`;
             let csvText = null;
             
-            try {
+            // Mekanisme Multi-Proxy Anti-Gagal
+            const fetchMethods = [
+                targetUrl,                                                               // 1. Direct fetch
+                `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`,                // 2. CORS Proxy 1
+                `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`,   // 3. CORS Proxy 2
+                `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(targetUrl)}` // 4. CORS Proxy 3
+            ];
+
+            for (let url of fetchMethods) {
                 try {
-                    const directResponse = await fetch(targetUrl);
-                    if (directResponse.ok) {
-                        const text = await directResponse.text();
-                        if (!text.trim().startsWith('<html') && !text.trim().startsWith('<!DOCTYPE') && text.trim().length > 10) {
+                    const res = await fetch(url);
+                    if (res.ok) {
+                        const text = await res.text();
+                        if (text && !text.trim().startsWith('<html') && !text.trim().startsWith('<!DOCTYPE') && text.trim().length > 10) {
                             csvText = text;
+                            break;
                         }
                     }
                 } catch (err) {
-                    console.warn("Direct fetch diblokir. Menggunakan Proxy...");
+                    console.warn(`Mencoba jalur koneksi berikutnya...`);
                 }
+            }
 
-                if (!csvText) {
-                    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`;
-                    const proxyResponse = await fetch(proxyUrl);
-                    if (proxyResponse.ok) {
-                        const text = await proxyResponse.text();
-                        if (text && !text.trim().startsWith('<html') && !text.trim().startsWith('<!DOCTYPE') && text.trim().length > 10) {
-                            csvText = text;
-                        }
-                    }
-                }
-
-                if (!csvText) throw new Error('Gagal menarik data. Pastikan spreadsheet dipublikasikan ke web dalam format CSV.');
+            try {
+                if (!csvText) throw new Error('Gagal menarik data. Pastikan spreadsheet dipublikasikan ke web dalam format Nilai yang dipisahkan koma (.csv).');
 
                 processCSVData(csvText);
                 
@@ -261,7 +262,7 @@
         }
 
         // ============================================================
-        // SISTEM AUTO-MAPPING KOLOM (SESUAI GAMBAR SPREADSHEET)
+        // SISTEM AUTO-MAPPING KOLOM (A - G)
         // ============================================================
         function processCSVData(csvText) {
             const rawData = [];
@@ -271,7 +272,6 @@
             const rows = csvToArray(csvText.trim());
             if (rows.length < 2) throw new Error('Data sheet kosong.');
 
-            // Baca Header untuk menentukan indeks kolom secara dinamis
             const headers = rows[0].map(h => (h || '').toString().toUpperCase().trim());
             
             const findIdx = (keywords, fallback) => {
@@ -279,7 +279,6 @@
                 return idx !== -1 ? idx : fallback;
             };
 
-            // Disesuaikan agar pas dengan urutan & penamaan pada gambar spreadsheet (A sampai G)
             const idxDate      = findIdx(['TIMESTAMP', 'TANGGAL', 'DATE'], 0);                          // Kolom A
             const idxUtc       = findIdx(['JAM UTC', 'UTC', 'JAM'], 1);                                 // Kolom B
             const idxAccKirim  = findIdx(['AKURASI PENGIRIMAR', 'AKURASI PENGIRIMAN', 'PENGIRIMAR'], 2);  // Kolom C
@@ -325,7 +324,7 @@
                     const day = dateObj.getDate();
                     yearsSet.add(year);
 
-                    // 2. PARSE JAM UTC (Sandi SYNOP: 00, 03, 06, 09, 12, 15, 18, 21)
+                    // 2. PARSE JAM UTC (00, 03, 06, 09, 12, 15, 18, 21)
                     let utcStr = (cells[idxUtc] || '').replace(/["']/g, '').trim(); 
                     let jamAngka = 0;
                     if (utcStr.includes(':')) jamAngka = parseInt(utcStr.split(':')[0]);
