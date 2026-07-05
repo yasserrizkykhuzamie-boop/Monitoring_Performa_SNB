@@ -40,7 +40,7 @@
         .month-tab.active { background: var(--primary-light); color: #fff; box-shadow: 0 4px 12px rgba(231, 76, 60, 0.25); }
 
         /* ----- SUMMARY CARDS ----- */
-        .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 16px; margin-bottom: 24px; }
+        .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }
         .summary-card { background: var(--card-bg); padding: 18px 20px; border-radius: var(--radius-sm); box-shadow: var(--shadow); border: 1px solid rgba(0,0,0,0.04); transition: var(--transition); }
         .summary-card .label { font-size: 12px; font-weight: 500; color: #7f8c8d; text-transform: uppercase; letter-spacing: 0.4px; }
         .summary-card .value { font-size: 30px; font-weight: 700; color: var(--primary); margin-top: 2px; letter-spacing: -0.5px; }
@@ -48,7 +48,6 @@
         .summary-card.accent-red .value { color: #e74c3c; }
         .summary-card.accent-orange .value { color: #e67e22; }
         .summary-card.accent-blue .value { color: #2980b9; }
-        .summary-card.accent-purple .value { color: #8e44ad; }
         .summary-card.accent-green .value { color: #27ae60; }
 
         /* ----- CARDS & GRID ----- */
@@ -163,10 +162,10 @@
         // ============================================================
         let personnel = [];
         let availableYears = [];
-        let statsData = []; // [month][person] = { warnings: 0, accuracySum: 0, validWarningDays: 0, greatCount: 0 }
+        let statsData = []; // [month][person] = { warnings: 0, accuracySum: 0, validWarningDays: 0 }
         let dailyStats = []; // [month][day] = { warnings: 0, accuracySum: 0, validWarningDays: 0 }
         let currentYear = new Date().getFullYear().toString();
-        let currentMode = 'month'; // 'month' atau 'quarter'
+        let currentMode = 'month'; 
         let currentPeriodIdx = new Date().getMonth();
 
         const monthNames = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
@@ -333,9 +332,7 @@
                         }
                     }
 
-                    let isGreat = (warnings > 0 && akurasi >= 100) ? 1 : 0;
-
-                    rawData.push({ year, month, day, observer, warnings, akurasi, isGreat });
+                    rawData.push({ year, month, day, observer, warnings, akurasi });
 
                 } catch (e) {
                     console.warn("Parse error at row " + i, cells);
@@ -367,7 +364,6 @@
                             statsData[d.month][pIdx].warnings += d.warnings;
                             statsData[d.month][pIdx].accuracySum += d.akurasi;
                             statsData[d.month][pIdx].validWarningDays += 1;
-                            statsData[d.month][pIdx].greatCount += d.isGreat;
 
                             dailyStats[d.month][d.day].warnings += d.warnings;
                             dailyStats[d.month][d.day].accuracySum += d.akurasi;
@@ -400,7 +396,7 @@
             for(let m = 0; m < 12; m++) {
                 let monthStats = [];
                 for(let p = 0; p < personnel.length; p++) {
-                    monthStats.push({ warnings: 0, accuracySum: 0, validWarningDays: 0, greatCount: 0 });
+                    monthStats.push({ warnings: 0, accuracySum: 0, validWarningDays: 0 });
                 }
                 statsData.push(monthStats);
 
@@ -424,7 +420,7 @@
         // FUNGSI KALKULASI STATISTIK AD WARNING
         // ============================================================
         function getTotals(monthsArray) {
-            let totalWarnings = 0, totalAccuracySum = 0, totalValidDays = 0, totalGreat = 0;
+            let totalWarnings = 0, totalAccuracySum = 0, totalValidDays = 0;
             monthsArray.forEach(mIdx => {
                 const stats = statsData[mIdx] || [];
                 stats.forEach(s => {
@@ -432,25 +428,23 @@
                         totalWarnings += s.warnings;
                         totalAccuracySum += s.accuracySum;
                         totalValidDays += s.validWarningDays;
-                        totalGreat += s.greatCount;
                     }
                 });
             });
-            return { totalWarnings, totalAccuracySum, totalValidDays, totalGreat };
+            return { totalWarnings, totalAccuracySum, totalValidDays };
         }
 
         function getRanking(monthsArray) {
             return personnel.map((name, i) => {
-                let warnings = 0, accuracySum = 0, validWarningDays = 0, greatCount = 0;
+                let warnings = 0, accuracySum = 0, validWarningDays = 0;
                 monthsArray.forEach(mIdx => {
-                    const s = (statsData[mIdx] && statsData[mIdx][i]) || { warnings: 0, accuracySum: 0, validWarningDays: 0, greatCount: 0 };
+                    const s = (statsData[mIdx] && statsData[mIdx][i]) || { warnings: 0, accuracySum: 0, validWarningDays: 0 };
                     warnings += s.warnings;
                     accuracySum += s.accuracySum;
                     validWarningDays += s.validWarningDays;
-                    greatCount += s.greatCount;
                 });
                 const avgAcc = validWarningDays > 0 ? (accuracySum / validWarningDays) : 0;
-                return { name, warnings, acc: avgAcc, great: greatCount };
+                return { name, warnings, acc: avgAcc };
             }).filter(d => d.warnings > 0).sort((a, b) => b.warnings - a.warnings || b.acc - a.acc); 
         }
 
@@ -466,7 +460,7 @@
         }
 
         // ============================================================
-        // RENDER UI DASHBOARD (Sesuai Desain Awal Sebelumnya)
+        // RENDER UI DASHBOARD
         // ============================================================
         function renderDashboard() {
             if(personnel.length === 0) return ''; 
@@ -481,7 +475,7 @@
 
             let html = '';
             
-            // SUMMARY CARDS
+            // SUMMARY CARDS (Tanpa Kartu Mutu GREAT)
             html += `
                 <div class="summary-grid">
                     <div class="summary-card accent-red">
@@ -493,11 +487,6 @@
                         <div class="label">🎯 Rata-Rata Akurasi</div>
                         <div class="value">${avgAcc.toFixed(1)}%</div>
                         <div class="sub">Validasi Saat Terjadi Peringatan</div>
-                    </div>
-                    <div class="summary-card accent-purple">
-                        <div class="label">🌟 Mutu "GREAT"</div>
-                        <div class="value">${overall.totalGreat}</div>
-                        <div class="sub">Total Evaluasi Sempurna</div>
                     </div>
                     <div class="summary-card accent-orange">
                         <div class="label">👥 Forecaster Aktif</div>
