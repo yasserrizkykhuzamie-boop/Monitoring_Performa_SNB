@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Dashboard TAFOR - 12 Bulan</title>
+    <title>Dashboard TAFOR - Bulanan & Triwulanan</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <style>
         /* ----- RESET & VARIABLES ----- */
@@ -106,7 +106,6 @@
     </div>
 
     <div class="dashboard">
-        <!-- ===== HEADER ===== -->
         <header class="header">
             <div class="header-left">
                 <div class="header-icon">🧭</div>
@@ -126,23 +125,28 @@
             </div>
         </header>
 
-        <!-- ===== FILTER ===== -->
         <div class="filter-bar">
             <div class="filter-group">
                 <label for="yearSelect">📆 Tahun</label>
                 <select id="yearSelect"></select>
             </div>
             <div class="filter-group">
-                <label for="monthSelect">📅 Bulan</label>
-                <select id="monthSelect"></select>
+                <label for="modeSelect">⚡ Mode</label>
+                <select id="modeSelect">
+                    <option value="month">Bulanan</option>
+                    <option value="quarter">Triwulanan</option>
+                </select>
             </div>
-            <div class="month-tabs" id="monthTabs"></div>
+            <div class="filter-group">
+                <label for="periodSelect" id="periodLabel">📅 Bulan</label>
+                <select id="periodSelect"></select>
+            </div>
+            <div class="month-tabs" id="periodTabs"></div>
         </div>
 
         <div id="uiMessageArea"></div>
         <div id="dashboardContent"></div>
 
-        <!-- ===== FOOTER ===== -->
         <div class="footer">
             <strong>Dashboard TAFOR AMP</strong> &middot; Data Live Google Sheets &middot; Diperbarui <span id="updateTime"></span>
         </div>
@@ -153,32 +157,40 @@
         // KONFIGURASI GOOGLE SPREADSHEET
         // ============================================================
         const PUBLISHED_ID = '2PACX-1vT4LcIB_-j2pfvt4BUNx4W6GKZiglF1UNo0-oR2yeKqjp7RY_004DF1GVmTxsuUiTx7oyBbrOsbx4Hp'; 
-        const GID = '420544373'; // <--- GID KHUSUS SHEET db_tafor
+        const GID = '420544373'; 
         const SHEET_NAME = 'db_tafor'; 
 
-        // ============================================================
-        // STRUKTUR DATA GLOBAL
-        // ============================================================
         let personnel = [];
         let availableYears = [];
-        let utcData = [];   // [month][person][4] -> untuk 00, 06, 12, 18
-        let statsData = []; // [month][person] = { total, sumArah, sumKec, sumGusty, sumEndapan, sumRata }
-        let dailyStats = []; // [month][day] = { total, sumRata }
+        let utcData = [];   
+        let statsData = []; 
+        let dailyStats = []; 
         let currentYear = new Date().getFullYear().toString();
+        let currentMode = 'month'; // 'month' atau 'quarter'
+        let currentPeriodIdx = new Date().getMonth();
 
         const monthNames = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+        const quarterNames = ['Triwulan I (Q1)', 'Triwulan II (Q2)', 'Triwulan III (Q3)', 'Triwulan IV (Q4)'];
+        const quarterShortNames = ['TW I', 'TW II', 'TW III', 'TW IV'];
         const utcLabels = ['00:00', '06:00', '12:00', '18:00'];
 
-        // ============================================================
-        // CSV PARSER HELPER
-        // ============================================================
         function csvToArray(strData) {
-            const objPattern = new RegExp(("(\\,|\\r?\\n|\\r|^)(?:\"([^\"]*(?:\"\"[^\"]*)*)\"|([^\\,\\r\\n]*))"), "gi");
+            strData = strData.trim();
+            const firstLine = strData.split(/\r?\n/)[0] || '';
+            const countComma = (firstLine.match(/,/g) || []).length;
+            const countSemi = (firstLine.match(/;/g) || []).length;
+            const countTab = (firstLine.match(/\t/g) || []).length;
+            
+            let delimiter = ",";
+            if (countSemi > countComma && countSemi >= countTab) delimiter = ";";
+            else if (countTab > countComma && countTab > countSemi) delimiter = "\t";
+
+            const objPattern = new RegExp(("(\\" + delimiter + "|\\r?\\n|\\r|^)(?:\"([^\"]*(?:\"\"[^\"]*)*)\"|([^\"\\" + delimiter + "\\r\\n]*))"), "gi");
             let arrData = [[]];
             let arrMatches = null;
             while (arrMatches = objPattern.exec(strData)) {
                 let strMatchedDelimiter = arrMatches[1];
-                if (strMatchedDelimiter.length && strMatchedDelimiter !== ",") arrData.push([]);
+                if (strMatchedDelimiter.length && strMatchedDelimiter !== delimiter) arrData.push([]);
                 let strMatchedValue;
                 if (arrMatches[2]) strMatchedValue = arrMatches[2].replace(new RegExp("\"\"", "g"), "\"");
                 else strMatchedValue = arrMatches[3];
@@ -187,15 +199,12 @@
             return arrData;
         }
 
-        // ============================================================
-        // FETCH & PARSE DATA
-        // ============================================================
         async function fetchSheetData() {
             document.getElementById('loadingOverlay').style.display = 'flex';
             document.getElementById('uiMessageArea').innerHTML = ''; 
             document.getElementById('dashboardContent').innerHTML = ''; 
             
-            const targetUrl = `https://docs.google.com/spreadsheets/d/e/${PUBLISHED_ID}/pub?gid=${GID}&single=true&output=csv`;
+            const targetUrl = `https://docs.google.com/spreadsheets/d/e/${PUBLISHED_ID}/pub?gid=${GID}&single=true&sheet=${encodeURIComponent(SHEET_NAME)}&output=csv`;
             let csvText = null;
             
             try {
@@ -212,26 +221,23 @@
                 }
 
                 if (!csvText) {
-                    const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`;
+                    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`;
                     const proxyResponse = await fetch(proxyUrl);
                     if (proxyResponse.ok) {
-                        const data = await proxyResponse.json();
-                        if (data && data.contents) {
-                            const text = data.contents;
-                            if (!text.trim().startsWith('<html') && !text.trim().startsWith('<!DOCTYPE') && text.trim().length > 10) {
-                                csvText = text;
-                            }
+                        const text = await proxyResponse.text();
+                        if (text && !text.trim().startsWith('<html') && !text.trim().startsWith('<!DOCTYPE') && text.trim().length > 10) {
+                            csvText = text;
                         }
                     }
                 }
 
-                if (!csvText) throw new Error('Gagal menarik data. Periksa pengaturan Publish to Web untuk sheet ini.');
+                if (!csvText) throw new Error('Gagal menarik data. Pastikan spreadsheet dipublikasikan ke web dalam format CSV.');
 
                 processCSVData(csvText);
                 
                 document.getElementById('statusBadge').classList.remove('loading');
-                document.getElementById('statusBadge').style.background = '#eef4fc';
-                document.getElementById('statusBadge').style.color = '#1a3a6b';
+                document.getElementById('statusBadge').style.background = '#f5eefc';
+                document.getElementById('statusBadge').style.color = '#8e44ad';
                 document.getElementById('statusBadge').querySelector('.dot').style.background = '#2ecc71';
                 document.getElementById('statusText').textContent = 'Live Connected';
             } catch (error) {
@@ -261,14 +267,11 @@
             const rows = csvToArray(csvText.trim());
             if (rows.length < 2) throw new Error('Data sheet kosong.');
 
-            // Loop data TAFOR
-            // Asumsi Kolom: 0:Date, 1:JAM(UTC), 2:Ak.Arah, 3:Ak.Kecepatan, 4:Ak.Gusty, 5:Ak.Endapan, 6:Rata-rata, 7:Forecaster
             for (let i = 1; i < rows.length; i++) {
                 const cells = rows[i];
                 if (cells.length < 8 || !cells[0] || !cells[7]) continue; 
 
                 try {
-                    // PARSE TANGGAL
                     let dateStr = cells[0].replace(/["']/g, '').trim(); 
                     let dateObj = new Date(dateStr);
                     
@@ -286,6 +289,11 @@
                             if (p1 > 12) { m = p0; d = p1; } 
                             dateObj = new Date(y, m - 1, d);
                         }
+                    } else if (dateStr.includes('-')) {
+                        let parts = dateStr.split('-');
+                        if (parts.length === 3 && parts[2].length === 4) {
+                            dateObj = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
+                        }
                     }
 
                     if (isNaN(dateObj.getTime())) continue; 
@@ -295,7 +303,6 @@
                     const day = dateObj.getDate();
                     yearsSet.add(year);
 
-                    // PARSE JAM UTC TAFOR (00, 06, 12, 18)
                     let utcStr = cells[1].replace(/["']/g, '').trim(); 
                     let jamAngka = 0;
                     if (utcStr.includes(':')) jamAngka = parseInt(utcStr.split(':')[0]);
@@ -306,16 +313,14 @@
                     else if (jamAngka === 6) utcSlot = 1;
                     else if (jamAngka === 12) utcSlot = 2;
                     else if (jamAngka === 18) utcSlot = 3;
-                    if (utcSlot === -1) continue; // Hanya hitung jam TAFOR standar
+                    if (utcSlot === -1) continue; 
 
-                    // PARSE AKURASI (Jika kosong atau '-', anggap 0 atau hitung valid jika ada)
-                    let accArah = parseFloat(cells[2].replace(/[^0-9.-]/g, '')) || 0;
-                    let accKec = parseFloat(cells[3].replace(/[^0-9.-]/g, '')) || 0;
-                    let accGusty = parseFloat(cells[4].replace(/[^0-9.-]/g, '')) || 0;
-                    let accEndapan = parseFloat(cells[5].replace(/[^0-9.-]/g, '')) || 0;
-                    let accRata = parseFloat(cells[6].replace(/[^0-9.-]/g, '')) || 0;
+                    let accArah = parseFloat((cells[2] || '').replace(/[^0-9.-]/g, '')) || 0;
+                    let accKec = parseFloat((cells[3] || '').replace(/[^0-9.-]/g, '')) || 0;
+                    let accGusty = parseFloat((cells[4] || '').replace(/[^0-9.-]/g, '')) || 0;
+                    let accEndapan = parseFloat((cells[5] || '').replace(/[^0-9.-]/g, '')) || 0;
+                    let accRata = parseFloat((cells[6] || '').replace(/[^0-9.-]/g, '')) || 0;
 
-                    // PARSE FORECASTER (Kolom 7)
                     let observer = cells[7].replace(/["']/g, '').trim().toUpperCase();
                     if (!observer) continue;
                     observersSet.add(observer);
@@ -347,34 +352,38 @@
             rawData.forEach(d => {
                 if(d.year === currentYear) {
                     const pIdx = personnel.indexOf(d.observer);
-                    
-                    utcData[d.month][pIdx][d.utcSlot] += 1;
+                    if (pIdx !== -1 && statsData[d.month] && statsData[d.month][pIdx]) {
+                        utcData[d.month][pIdx][d.utcSlot] += 1;
 
-                    statsData[d.month][pIdx].total += 1;
-                    statsData[d.month][pIdx].sumArah += d.accArah;
-                    statsData[d.month][pIdx].sumKec += d.accKec;
-                    statsData[d.month][pIdx].sumGusty += d.accGusty;
-                    statsData[d.month][pIdx].sumEndapan += d.accEndapan;
-                    statsData[d.month][pIdx].sumRata += d.accRata;
+                        statsData[d.month][pIdx].total += 1;
+                        statsData[d.month][pIdx].sumArah += d.accArah;
+                        statsData[d.month][pIdx].sumKec += d.accKec;
+                        statsData[d.month][pIdx].sumGusty += d.accGusty;
+                        statsData[d.month][pIdx].sumEndapan += d.accEndapan;
+                        statsData[d.month][pIdx].sumRata += d.accRata;
+                    }
 
-                    dailyStats[d.month][d.day].total += 1;
-                    dailyStats[d.month][d.day].sumRata += d.accRata;
+                    if (dailyStats[d.month] && dailyStats[d.month][d.day]) {
+                        dailyStats[d.month][d.day].total += 1;
+                        dailyStats[d.month][d.day].sumRata += d.accRata;
+                    }
                 }
             });
 
-            setupMonthTabs();
+            setupPeriodControls();
             
             let activeMonth = new Date().getMonth();
-            if (statsData[activeMonth] && statsData[activeMonth].every(p => p.total === 0)) {
+            if (statsData[activeMonth] && statsData[activeMonth].every(p => p && p.total === 0)) {
                 for(let m = 11; m >= 0; m--) {
-                    if(!statsData[m].every(p => p.total === 0)) {
+                    if(statsData[m] && !statsData[m].every(p => p && p.total === 0)) {
                         activeMonth = m; break;
                     }
                 }
             }
 
-            document.getElementById('monthSelect').value = activeMonth;
-            updateDashboard(activeMonth);
+            currentPeriodIdx = currentMode === 'month' ? activeMonth : Math.floor(activeMonth / 3);
+            document.getElementById('periodSelect').value = currentPeriodIdx;
+            updateDashboard();
         }
 
         function buildEmptyDataArrays() {
@@ -386,7 +395,7 @@
                 let monthUtc = [];
                 let monthStats = [];
                 for(let p = 0; p < personnel.length; p++) {
-                    monthUtc.push(new Array(4).fill(0)); // Hanya 4 Shift UTC
+                    monthUtc.push(new Array(4).fill(0)); 
                     monthStats.push({ total: 0, sumArah: 0, sumKec: 0, sumGusty: 0, sumEndapan: 0, sumRata: 0 });
                 }
                 utcData.push(monthUtc);
@@ -400,39 +409,58 @@
             }
         }
 
-        // ============================================================
-        // FUNGSI KALKULASI STATISTIK TAFOR
-        // ============================================================
-        function getTargetDeliveries(year, monthIdx) {
-            const daysInMonth = new Date(parseInt(year), monthIdx + 1, 0).getDate();
-            return daysInMonth * 4; // TAFOR 4x sehari (00, 06, 12, 18)
+        function getMonthsInPeriod() {
+            if (currentMode === 'month') {
+                return [currentPeriodIdx];
+            } else {
+                return [currentPeriodIdx * 3, currentPeriodIdx * 3 + 1, currentPeriodIdx * 3 + 2];
+            }
         }
 
-        function getTotals(monthIdx) {
-            const stats = statsData[monthIdx];
-            let total = 0, sumArah = 0, sumKec = 0, sumGusty = 0, sumEndapan = 0, sumRata = 0;
+        function getTargetDeliveries(year, monthsArray) {
+            let totalDays = 0;
+            monthsArray.forEach(mIdx => {
+                totalDays += new Date(parseInt(year), mIdx + 1, 0).getDate();
+            });
+            return totalDays * 4; // TAFOR 4x sehari (00, 06, 12, 18)
+        }
 
-            stats.forEach(s => {
-                total += s.total;
-                sumArah += s.sumArah;
-                sumKec += s.sumKec;
-                sumGusty += s.sumGusty;
-                sumEndapan += s.sumEndapan;
-                sumRata += s.sumRata;
+        function getTotals(monthsArray) {
+            let total = 0, sumArah = 0, sumKec = 0, sumGusty = 0, sumEndapan = 0, sumRata = 0;
+            monthsArray.forEach(mIdx => {
+                const stats = statsData[mIdx] || [];
+                stats.forEach(s => {
+                    if (s) {
+                        total += s.total;
+                        sumArah += s.sumArah;
+                        sumKec += s.sumKec;
+                        sumGusty += s.sumGusty;
+                        sumEndapan += s.sumEndapan;
+                        sumRata += s.sumRata;
+                    }
+                });
             });
             return { total, sumArah, sumKec, sumGusty, sumEndapan, sumRata };
         }
 
-        function getRanking(monthIdx) {
-            const stats = statsData[monthIdx];
+        function getRanking(monthsArray) {
             return personnel.map((name, i) => {
-                const s = stats[i];
-                const acc = s.total > 0 ? (s.sumRata / s.total) : 0;
-                const arah = s.total > 0 ? (s.sumArah / s.total) : 0;
-                const kec = s.total > 0 ? (s.sumKec / s.total) : 0;
-                const gusty = s.total > 0 ? (s.sumGusty / s.total) : 0;
-                const endapan = s.total > 0 ? (s.sumEndapan / s.total) : 0;
-                return { name, total: s.total, acc, arah, kec, gusty, endapan };
+                let total = 0, sumArah = 0, sumKec = 0, sumGusty = 0, sumEndapan = 0, sumRata = 0;
+                monthsArray.forEach(mIdx => {
+                    const s = (statsData[mIdx] && statsData[mIdx][i]) || { total: 0, sumArah: 0, sumKec: 0, sumGusty: 0, sumEndapan: 0, sumRata: 0 };
+                    total += s.total;
+                    sumArah += s.sumArah;
+                    sumKec += s.sumKec;
+                    sumGusty += s.sumGusty;
+                    sumEndapan += s.sumEndapan;
+                    sumRata += s.sumRata;
+                });
+                const acc = total > 0 ? (sumRata / total) : 0;
+                const arah = total > 0 ? (sumArah / total) : 0;
+                const kec = total > 0 ? (sumKec / total) : 0;
+                const gusty = total > 0 ? (sumGusty / total) : 0;
+                const endapan = total > 0 ? (sumEndapan / total) : 0;
+                return { name, total, acc, arah, kec, gusty, endapan };
             }).filter(d => d.total > 0).sort((a, b) => b.acc - a.acc || b.total - a.total); 
         }
 
@@ -440,8 +468,8 @@
             const months = []; const realisasis = []; const targets = []; const accuracies = [];
             for (let m = 0; m < 12; m++) {
                 months.push(monthNames[m].substring(0, 3));
-                const { total, sumRata } = getTotals(m);
-                const target = getTargetDeliveries(currentYear, m);
+                const { total, sumRata } = getTotals([m]);
+                const target = getTargetDeliveries(currentYear, [m]);
                 realisasis.push(total);
                 targets.push(target);
                 accuracies.push(total > 0 ? (sumRata / total) : 0);
@@ -449,35 +477,51 @@
             return { months, realisasis, targets, accuracies };
         }
 
-        // ============================================================
-        // RENDER UI DASHBOARD
-        // ============================================================
-        function renderDashboard(monthIdx) {
+        function renderDashboard() {
             if(personnel.length === 0) return ''; 
 
-            const month = monthNames[monthIdx];
-            const overall = getTotals(monthIdx);
-            const targetDel = getTargetDeliveries(currentYear, monthIdx);
+            const monthsArray = getMonthsInPeriod();
+            const periodTitle = currentMode === 'month' ? monthNames[currentPeriodIdx] : quarterNames[currentPeriodIdx];
+            const targetDel = getTargetDeliveries(currentYear, monthsArray);
+            const overall = getTotals(monthsArray);
             
-            const activeCount = statsData[monthIdx].filter(s => s.total > 0).length;
+            const ranking = getRanking(monthsArray);
+            const activeCount = ranking.length;
             const avgAcc = overall.total > 0 ? (overall.sumRata / overall.total) : 0;
+            const avgArah = overall.total > 0 ? (overall.sumArah / overall.total) : 0;
+            const avgKec = overall.total > 0 ? (overall.sumKec / overall.total) : 0;
+            const avgGusty = overall.total > 0 ? (overall.sumGusty / overall.total) : 0;
             const avgEndapan = overall.total > 0 ? (overall.sumEndapan / overall.total) : 0;
-            const ranking = getRanking(monthIdx);
 
             let html = '';
             
-            // SUMMARY CARDS
+            // SUMMARY CARDS (Lengkap semua 4 parameter: Arah, Kecepatan, Gusty, dan Endapan)
             html += `
                 <div class="summary-grid">
                     <div class="summary-card accent-blue">
                         <div class="label">📝 Sandi Dibuat</div>
                         <div class="value">${overall.total} <span style="font-size: 20px; color: #7a9abb; font-weight: 500;">/ ${targetDel}</span></div>
-                        <div class="sub">Realisasi vs Target (${month})</div>
+                        <div class="sub">Realisasi vs Target (${periodTitle})</div>
                     </div>
                     <div class="summary-card accent-green">
                         <div class="label">🎯 Akurasi TAFOR</div>
                         <div class="value">${avgAcc.toFixed(2)}%</div>
                         <div class="sub">Rata-rata keseluruhan parameter</div>
+                    </div>
+                    <div class="summary-card accent-blue">
+                        <div class="label">🧭 Akurasi Arah</div>
+                        <div class="value">${avgArah.toFixed(2)}%</div>
+                        <div class="sub">Kebenaran prediksi arah angin</div>
+                    </div>
+                    <div class="summary-card accent-green">
+                        <div class="label">💨 Akurasi Kecepatan</div>
+                        <div class="value">${avgKec.toFixed(2)}%</div>
+                        <div class="sub">Prediksi kecepatan angin</div>
+                    </div>
+                    <div class="summary-card accent-purple">
+                        <div class="label">🌀 Akurasi Gusty</div>
+                        <div class="value">${avgGusty.toFixed(2)}%</div>
+                        <div class="sub">Kejadian hembusan kuat</div>
                     </div>
                     <div class="summary-card accent-purple">
                         <div class="label">☔ Akurasi Endapan</div>
@@ -501,7 +545,7 @@
                 <div class="card" style="margin-bottom: 24px;">
                     <div class="card-header">
                         <h2>📆 Tren Akurasi & Pembuatan TAFOR Harian</h2>
-                        <span class="chip">${month} ${currentYear}</span>
+                        <span class="chip">${periodTitle} ${currentYear}</span>
                     </div>
                     <div class="chart-container tall">
                         <canvas id="dailyTrendChart"></canvas>
@@ -518,7 +562,7 @@
                     <div class="chart-container tall"><canvas id="trendChart"></canvas></div>
                 </div>
                 <div class="card">
-                    <div class="card-header"><h2>🕸️ Akurasi per Parameter (Top 5)</h2><span class="chip">${month}</span></div>
+                    <div class="card-header"><h2>🕸️ Akurasi per Parameter (Top 5)</h2><span class="chip">${periodTitle}</span></div>
                     <div class="chart-container tall"><canvas id="radarChart"></canvas></div>
                 </div>
             </div>`;
@@ -526,15 +570,15 @@
             // BARIS 2: POLAR + STACKED + BAR PARAMETER
             html += `<div class="grid-3">
                 <div class="card">
-                    <div class="card-header"><h2>🍩 Kontribusi Forecaster</h2><span class="chip">${month}</span></div>
+                    <div class="card-header"><h2>🍩 Kontribusi Forecaster</h2><span class="chip">${periodTitle}</span></div>
                     <div class="chart-container"><canvas id="polarChart"></canvas></div>
                 </div>
                 <div class="card">
-                    <div class="card-header"><h2>📊 Beban Jam UTC (Top 5)</h2><span class="chip">${month}</span></div>
+                    <div class="card-header"><h2>📊 Beban Jam UTC (Top 5)</h2><span class="chip">${periodTitle}</span></div>
                     <div class="chart-container"><canvas id="stackedChart"></canvas></div>
                 </div>
                 <div class="card">
-                    <div class="card-header"><h2>📉 Rata-Rata Parameter</h2><span class="chip">${month}</span></div>
+                    <div class="card-header"><h2>📉 Rata-Rata Parameter</h2><span class="chip">${periodTitle}</span></div>
                     <div class="chart-container"><canvas id="barParameterChart"></canvas></div>
                 </div>
             </div>`;
@@ -543,10 +587,10 @@
             const top8 = ranking.slice(0, 8);
             html += `<div class="grid-2-1">
                 <div class="card">
-                    <div class="card-header"><h2>🔥 Heatmap Akurasi (Top 8)</h2><span class="chip">${month}</span></div>
+                    <div class="card-header"><h2>🔥 Heatmap Akurasi (Top 8)</h2><span class="chip">${periodTitle}</span></div>
                     <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:12px;">`;
             
-            if(top8.length === 0) html += `<p style="grid-column: span 4; text-align:center; color:#999;">Belum ada data di bulan ini.</p>`;
+            if(top8.length === 0) html += `<p style="grid-column: span 4; text-align:center; color:#999;">Belum ada data di periode ini.</p>`;
             
             top8.forEach((d) => {
                 const pct = Math.round(d.acc);
@@ -564,7 +608,7 @@
             });
             html += `</div></div>
                 <div class="card">
-                    <div class="card-header"><h2>🏆 Peringkat Kinerja Forecaster</h2><span class="chip">${month}</span></div>
+                    <div class="card-header"><h2>🏆 Peringkat Kinerja Forecaster</h2><span class="chip">${periodTitle}</span></div>
                     <div style="max-height:280px; overflow-y:auto;">
                         <table class="rank-table">
                             <thead><tr><th>Rank</th><th>Forecaster</th><th>Total TAFOR</th><th>Akurasi Total</th></tr></thead>
@@ -581,29 +625,29 @@
             return html;
         }
 
-        // ============================================================
-        // RENDER CHARTS
-        // ============================================================
         let chartInstances = {};
-        function renderAllCharts(monthIdx) {
+        function renderAllCharts() {
             if(personnel.length === 0) return;
             Object.values(chartInstances).forEach(ch => { if (ch) ch.destroy(); });
             chartInstances = {};
 
-            const ranking = getRanking(monthIdx);
+            const monthsArray = getMonthsInPeriod();
+            const ranking = getRanking(monthsArray);
             const trend = getMonthlyTrend();
             const top5 = ranking.slice(0, 5);
 
             // 0. CHART HARIAN
-            const daysInMonth = new Date(parseInt(currentYear), monthIdx + 1, 0).getDate();
             const dailyLabels = [], dailyRealisasi = [], dailyAkurasi = [];
-
-            for (let d = 1; d <= daysInMonth; d++) {
-                dailyLabels.push(d); 
-                const stats = dailyStats[monthIdx][d];
-                dailyRealisasi.push(stats.total);
-                dailyAkurasi.push(stats.total > 0 ? (stats.sumRata / stats.total) : null);
-            }
+            monthsArray.forEach(mIdx => {
+                const daysInMonth = new Date(parseInt(currentYear), mIdx + 1, 0).getDate();
+                for (let d = 1; d <= daysInMonth; d++) {
+                    const labelStr = currentMode === 'quarter' ? `${d} ${monthNames[mIdx].substring(0,3)}` : `${d}`;
+                    dailyLabels.push(labelStr);
+                    const stats = (dailyStats[mIdx] && dailyStats[mIdx][d]) || { total: 0, sumRata: 0 };
+                    dailyRealisasi.push(stats.total);
+                    dailyAkurasi.push(stats.total > 0 ? (stats.sumRata / stats.total) : null);
+                }
+            });
 
             if(document.getElementById('dailyTrendChart')) {
                 chartInstances.dailyTrend = new Chart(document.getElementById('dailyTrendChart'), {
@@ -613,7 +657,7 @@
                         datasets: [
                             {
                                 type: 'line', label: 'Rata-rata Akurasi (%)', data: dailyAkurasi, borderColor: '#8e44ad', backgroundColor: 'rgba(142, 68, 173,0.1)',
-                                tension: 0.3, borderWidth: 3, pointRadius: 4, yAxisID: 'y', spanGaps: true
+                                tension: 0.3, borderWidth: 3, pointRadius: currentMode === 'quarter' ? 1 : 4, yAxisID: 'y', spanGaps: true
                             },
                             {
                                 type: 'bar', label: 'Jumlah Sandi Dibuat', data: dailyRealisasi, backgroundColor: '#3498db', borderRadius: 4, yAxisID: 'y1'
@@ -624,14 +668,14 @@
                         responsive: true, maintainAspectRatio: false,
                         scales: { 
                             y: { beginAtZero: false, min: 50, max: 100, title: {display: true, text: 'Akurasi (%)'} },
-                            y1: { beginAtZero: true, position: 'right', grid: {display: false}, title: {display: true, text: 'Jumlah TAFOR'} }
+                            y1: { beginAtZero: true, position: 'right', grid: {display: false}, title: {display: true, text: 'Jumlah TAFOR'}, ticks:{stepSize: 1} },
+                            x: { ticks: { maxTicksLimit: currentMode === 'quarter' ? 15 : 31 } }
                         },
                         plugins: { tooltip: { mode: 'index', intersect: false } }
                     }
                 });
             }
 
-            // 1. TREND OVERALL (12 Bulan)
             if(document.getElementById('trendChart')) {
                 chartInstances.trend = new Chart(document.getElementById('trendChart'), {
                     type: 'line', data: { labels: trend.months,
@@ -640,17 +684,10 @@
                             { label: 'Akurasi (%)', data: trend.accuracies, type: 'line', borderColor: '#8e44ad', tension: 0.3, borderWidth: 3, yAxisID: 'y' }
                         ]
                     },
-                    options: { 
-                        responsive: true, maintainAspectRatio: false, 
-                        scales: { 
-                            y: { beginAtZero: false, min: 60, max: 100 },
-                            y1: { beginAtZero: true, position: 'right', grid: {display:false} }
-                        } 
-                    }
+                    options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: false, min: 60, max: 100 }, y1: { beginAtZero: true, position: 'right', grid: {display:false} } } }
                 });
             }
             
-            // 2. RADAR (Akurasi Parameter per Top 5 Forecaster)
             if(document.getElementById('radarChart') && top5.length > 0) {
                 const radarData = top5.map(d => {
                     return [d.arah, d.kec, d.gusty, d.endapan];
@@ -662,7 +699,6 @@
                 });
             }
 
-            // 3. POLAR
             if(document.getElementById('polarChart')) {
                 const activeData = ranking.map(d => ({ name: d.name, total: d.total }));
                 chartInstances.polar = new Chart(document.getElementById('polarChart'), {
@@ -671,27 +707,26 @@
                 });
             }
 
-            // 4. STACKED BAR (Beban Jam TAFOR: 00, 06, 12, 18)
             if(document.getElementById('stackedChart') && top5.length > 0) {
-                const top5Idxs = top5.map(d => personnel.indexOf(d.name));
-                const monthUtc = utcData[monthIdx];
-                
+                const top5Names = top5.map(d => d.name);
+                const aggregatedUtc = top5Names.map(name => {
+                    const pIdx = personnel.indexOf(name);
+                    const sumUtc = new Array(4).fill(0);
+                    monthsArray.forEach(mIdx => {
+                        const mUtc = (utcData[mIdx] && utcData[mIdx][pIdx]) || new Array(4).fill(0);
+                        mUtc.forEach((val, h) => sumUtc[h] += val);
+                    });
+                    return sumUtc;
+                });
+
                 chartInstances.stacked = new Chart(document.getElementById('stackedChart'), {
-                    type: 'bar', data: { 
-                        labels: utcLabels, // 00, 06, 12, 18
-                        datasets: top5Idxs.map((pIdx, i) => ({ 
-                            label: personnel[pIdx].split(' ')[0], 
-                            data: monthUtc[pIdx], 
-                            backgroundColor: `hsl(${i * 60 + 260}, 70%, 55%)` 
-                        })) 
-                    },
+                    type: 'bar', data: { labels: utcLabels, datasets: top5Names.map((name, i) => ({ label: name.split(' ')[0], data: aggregatedUtc[i], backgroundColor: `hsl(${i * 60 + 260}, 70%, 55%)` })) },
                     options: { responsive: true, maintainAspectRatio: false, scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true } } }
                 });
             }
 
-            // 5. BAR CHART (Rata-rata Parameter Keseluruhan)
             if(document.getElementById('barParameterChart')) {
-                const overall = getTotals(monthIdx);
+                const overall = getTotals(monthsArray);
                 const avgArah = overall.total > 0 ? (overall.sumArah / overall.total) : 0;
                 const avgKec = overall.total > 0 ? (overall.sumKec / overall.total) : 0;
                 const avgGusty = overall.total > 0 ? (overall.sumGusty / overall.total) : 0;
@@ -707,39 +742,47 @@
                             borderRadius: 6
                         }] 
                     },
-                    options: { 
-                        responsive: true, maintainAspectRatio: false, 
-                        plugins: { legend: { display: false } },
-                        scales: { y: { beginAtZero: false, min: 60, max: 100 } }
-                    }
+                    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: false, min: 60, max: 100 } } }
                 });
             }
         }
 
-        // ============================================================
-        // EVENT LISTENER & INIT
-        // ============================================================
-        function setupMonthTabs() {
-            const tabsContainer = document.getElementById('monthTabs');
-            tabsContainer.innerHTML = '';
-            const selMonth = parseInt(document.getElementById('monthSelect').value);
-            monthNames.forEach((name, idx) => {
+        function setupPeriodControls() {
+            const periodSelect = document.getElementById('periodSelect');
+            const periodTabs = document.getElementById('periodTabs');
+            const periodLabel = document.getElementById('periodLabel');
+
+            periodSelect.innerHTML = '';
+            periodTabs.innerHTML = '';
+
+            const list = currentMode === 'month' ? monthNames : quarterNames;
+            const shortList = currentMode === 'month' ? monthNames.map(m => m.substring(0,3)) : quarterShortNames;
+            periodLabel.textContent = currentMode === 'month' ? '📅 Bulan' : '📅 Triwulan';
+
+            list.forEach((name, idx) => {
+                const opt = document.createElement('option');
+                opt.value = idx; opt.textContent = name;
+                if(idx === currentPeriodIdx) opt.selected = true;
+                periodSelect.appendChild(opt);
+
                 const btn = document.createElement('button');
-                btn.className = 'month-tab' + (idx === selMonth ? ' active' : '');
-                btn.textContent = name.substring(0, 3);
-                btn.addEventListener('click', function() {
-                    document.querySelectorAll('.month-tab').forEach(t => t.classList.remove('active'));
-                    this.classList.add('active');
-                    document.getElementById('monthSelect').value = idx;
-                    updateDashboard(idx);
-                });
-                tabsContainer.appendChild(btn);
+                btn.className = 'month-tab' + (idx === currentPeriodIdx ? ' active' : '');
+                btn.textContent = shortList[idx];
+                btn.addEventListener('click', () => selectPeriod(idx));
+                periodTabs.appendChild(btn);
             });
         }
 
-        function updateDashboard(monthIdx) {
-            document.getElementById('dashboardContent').innerHTML = renderDashboard(monthIdx);
-            setTimeout(() => { renderAllCharts(monthIdx); }, 80);
+        function selectPeriod(idx) {
+            currentPeriodIdx = idx;
+            document.getElementById('periodSelect').value = idx;
+            document.querySelectorAll('#periodTabs .month-tab').forEach((t, i) => t.classList.toggle('active', i === idx));
+            updateDashboard();
+        }
+
+        function updateDashboard() {
+            document.getElementById('dashboardContent').innerHTML = renderDashboard();
+            setTimeout(() => { renderAllCharts(); }, 80);
         }
 
         function init() {
@@ -748,17 +791,20 @@
             document.getElementById('currentDate').textContent = dateStr;
             document.getElementById('updateTime').textContent = `${dateStr}, ${now.toLocaleTimeString('id-ID', {hour:'2-digit', minute:'2-digit'})} WIB`;
 
-            document.getElementById('monthSelect').innerHTML = monthNames.map((m, i) => `<option value="${i}">${m}</option>`).join('');
-            document.getElementById('monthSelect').value = now.getMonth();
-
             document.getElementById('yearSelect').addEventListener('change', function() {
                 currentYear = this.value;
                 fetchSheetData(); 
             });
-            document.getElementById('monthSelect').addEventListener('change', function() {
-                const idx = parseInt(this.value);
-                document.querySelectorAll('.month-tab').forEach((tab, i) => tab.classList.toggle('active', i === idx));
-                updateDashboard(idx);
+
+            document.getElementById('modeSelect').addEventListener('change', function() {
+                currentMode = this.value;
+                currentPeriodIdx = currentMode === 'month' ? new Date().getMonth() : Math.floor(new Date().getMonth() / 3);
+                setupPeriodControls();
+                updateDashboard();
+            });
+
+            document.getElementById('periodSelect').addEventListener('change', function() {
+                selectPeriod(parseInt(this.value));
             });
 
             fetchSheetData();
