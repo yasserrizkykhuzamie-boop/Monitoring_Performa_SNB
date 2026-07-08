@@ -725,10 +725,21 @@
                 parts.push({ l: 'S<sub>1</sub>S<sub>1</sub>S<sub>1</sub>', v: group.substring(1,4), d: 'Nilai normal penyinaran' });
                 decodes.push(`Normal Penyinaran: <b>${parseInt(group.substring(1,4), 10)/10} Jam</b>`);
             }
-            else if (sectionId === 2 && (head === '8' || head === '9')) {
-                valid = false; err = "Kelompok ini tidak umum";
-                parts.push({ l: head, v: head, d: 'Indikator' });
-                parts.push({ l: 'Data', v: group.substring(1), d: 'Tahun tanpa rekaman data' });
+            else if (sectionId === 2 && head === '8') {
+                if (group.length !== 7) { valid = false; err = "Harus 7 digit"; }
+                parts.push({ l: '8', v: head, d: 'Indikator' });
+                parts.push({ l: 'y<sub>p</sub>y<sub>p</sub>', v: group.substring(1,3), d: 'Jml tahun tanpa data tekanan' });
+                parts.push({ l: 'y<sub>T</sub>y<sub>T</sub>', v: group.substring(3,5), d: 'Jml tahun tanpa data suhu' });
+                parts.push({ l: 'y<sub>Tx</sub>y<sub>Tx</sub>', v: group.substring(5,7), d: 'Jml tahun tanpa data suhu ekstrim' });
+                decodes.push(`Tahun Data Hilang: Tekanan=<b>${group.substring(1,3)} Thn</b>, Suhu=<b>${group.substring(3,5)} Thn</b>, Suhu Ekstrim=<b>${group.substring(5,7)} Thn</b>`);
+            }
+            else if (sectionId === 2 && head === '9') {
+                if (group.length !== 7) { valid = false; err = "Harus 7 digit"; }
+                parts.push({ l: '9', v: head, d: 'Indikator' });
+                parts.push({ l: 'y<sub>e</sub>y<sub>e</sub>', v: group.substring(1,3), d: 'Jml tahun tanpa data uap air' });
+                parts.push({ l: 'y<sub>R</sub>y<sub>R</sub>', v: group.substring(3,5), d: 'Jml tahun tanpa data curah hujan' });
+                parts.push({ l: 'y<sub>S</sub>y<sub>S</sub>', v: group.substring(5,7), d: 'Jml tahun tanpa data penyinaran' });
+                decodes.push(`Tahun Data Hilang: Uap Air=<b>${group.substring(1,3)} Thn</b>, Curah Hujan=<b>${group.substring(3,5)} Thn</b>, Penyinaran=<b>${group.substring(5,7)} Thn</b>`);
             }
 
             // ========================= ATURAN SEKSI 3 (JUMLAH HARI) =========================
