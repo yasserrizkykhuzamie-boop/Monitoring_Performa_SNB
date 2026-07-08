@@ -664,11 +664,10 @@
                 parts.push({ l: 'eee', v: group.substring(1,4), d: 'Nilai normal uap air bulanan' });
             }
             else if (sectionId === 2 && head === '6') {
-                let endsSlash = group.endsWith('/');
-                if (group.length !== 7 || !endsSlash) { valid = false; err = "Wajib 7 digit & ditutup garis miring (/)"; }
+                if (group.length !== 7) { valid = false; err = "Harus 7 digit"; }
                 parts.push({ l: '6', v: head, d: 'Indikator' });
                 parts.push({ l: 'R<sub>1</sub>R<sub>1</sub>R<sub>1</sub>R<sub>1</sub>', v: group.substring(1,5), d: 'Nilai normal curah hujan' });
-                parts.push({ l: 'n<sub>r</sub>n<sub>r</sub>', v: group.substring(5,7), d: 'Jumlah rata-rata hari hujan', e: !endsSlash });
+                parts.push({ l: 'n<sub>r</sub>n<sub>r</sub>', v: group.substring(5,7), d: 'Jumlah rata-rata hari hujan' });
             }
             else if (sectionId === 2 && head === '7') {
                 if (group.length !== 4) { valid = false; err = "Harus 4 digit"; }
